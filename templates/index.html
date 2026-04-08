@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemma Hub - AI Assistant</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Модальное окно авторизации/регистрации -->
+    <div id="auth-modal" class="modal">
+        <div class="modal-content auth-container">
+            <h2>Gemma Hub</h2>
+            <div class="auth-tabs">
+                <button class="tab-btn active" data-tab="login">Вход</button>
+                <button class="tab-btn" data-tab="register">Регистрация</button>
+            </div>
+            
+            <form id="login-form" class="auth-form">
+                <div class="form-group">
+                    <label for="login-username">Логин</label>
+                    <input type="text" id="login-username" required>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Пароль</label>
+                    <input type="password" id="login-password" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Войти</button>
+                <div id="login-error" class="error-message"></div>
+            </form>
+            
+            <form id="register-form" class="auth-form hidden">
+                <div class="form-group">
+                    <label for="register-username">Логин</label>
+                    <input type="text" id="register-username" required minlength="3">
+                </div>
+                <div class="form-group">
+                    <label for="register-password">Пароль</label>
+                    <input type="password" id="register-password" required minlength="6">
+                </div>
+                <button type="submit" class="btn btn-primary">Зарегистрироваться</button>
+                <div id="register-error" class="error-message"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Основной интерфейс -->
+    <div id="app-container" class="hidden">
+        <!-- Левая панель навигации -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>Gemma Hub</h1>
+                <span id="user-display" class="user-info"></span>
+            </div>
+            
+            <div class="sidebar-section">
+                <button id="new-chat-btn" class="btn btn-secondary full-width">
+                    + Новый чат
+                </button>
+            </div>
+            
+            <div class="sidebar-section">
+                <h3>Мои чаты</h3>
+                <div id="chats-list" class="chats-list">
+                    <!-- Список чатов загружается динамически -->
+                </div>
+            </div>
+            
+            <div class="sidebar-section">
+                <h3>Группы</h3>
+                <div class="create-group-form">
+                    <input type="text" id="new-group-name" placeholder="Название группы">
+                    <button id="create-group-btn" class="btn btn-sm">Создать</button>
+                </div>
+                <div id="groups-list" class="groups-list">
+                    <!-- Список групп загружается динамически -->
+                </div>
+            </div>
+            
+            <div class="sidebar-footer">
+                <button id="logout-btn" class="btn btn-danger full-width">Выход</button>
+            </div>
+        </aside>
+
+        <!-- Центральная область -->
+        <main class="main-content">
+            <!-- Заголовок текущего чата -->
+            <header class="chat-header">
+                <h2 id="current-chat-title">Выберите чат</h2>
+                <div class="chat-mode-selector">
+                    <button class="mode-btn active" data-mode="chat">💬 Чат</button>
+                    <button class="mode-btn" data-mode="image">🖼️ Анализ фото</button>
+                    <button class="mode-btn" data-mode="audio">🎤 Аудио</button>
+                    <button class="mode-btn" data-mode="observer" id="observer-mode-btn">👁️ Наблюдатель</button>
+                </div>
+            </header>
+            
+            <!-- Окно переписки -->
+            <div id="messages-container" class="messages-container">
+                <div class="welcome-message">
+                    <h3>Добро пожаловать в Gemma Hub!</h3>
+                    <p>Выберите существующий чат или создайте новый, чтобы начать общение с ИИ.</p>
+                </div>
+            </div>
+            
+            <!-- Область ввода -->
+            <footer class="input-area">
+                <!-- Режим чата -->
+                <div id="chat-input-container" class="input-container">
+                    <textarea id="message-input" placeholder="Введите сообщение..." rows="1"></textarea>
+                    <button id="send-btn" class="btn btn-primary">➤</button>
+                </div>
+                
+                <!-- Режим анализа изображений -->
+                <div id="image-input-container" class="input-container hidden">
+                    <input type="file" id="image-file" accept="image/*">
+                    <button id="upload-image-btn" class="btn btn-primary">Анализировать</button>
+                </div>
+                
+                <!-- Режим аудио -->
+                <div id="audio-input-container" class="input-container hidden">
+                    <input type="file" id="audio-file" accept="audio/*">
+                    <button id="upload-audio-btn" class="btn btn-primary">Транскрибировать</button>
+                </div>
+                
+                <!-- Режим наблюдателя -->
+                <div id="observer-input-container" class="input-container hidden">
+                    <select id="observer-role">
+                        <option value="Критик">Критик</option>
+                        <option value="Саммаризатор">Саммаризатор</option>
+                        <option value="Поиск ошибок">Поиск ошибок</option>
+                        <option value="Аналитик">Аналитик</option>
+                        <option value="Советник">Советник</option>
+                    </select>
+                    <select id="observer-type">
+                        <option value="quick">Быстрый анализ (10 сообщений)</option>
+                        <option value="full">Полный отчет (все сообщения)</option>
+                    </select>
+                    <button id="analyze-btn" class="btn btn-primary">Анализировать</button>
+                </div>
+            </footer>
+        </main>
+
+        <!-- Правая панель -->
+        <aside class="right-panel hidden" id="right-panel">
+            <div class="panel-section">
+                <h3>Участники</h3>
+                <div id="members-list" class="members-list">
+                    <!-- Список участников для группового чата -->
+                </div>
+            </div>
+            
+            <div class="panel-section" id="observer-settings">
+                <h3>Настройки наблюдателя</h3>
+                <p class="hint">Выберите роль ИИ для анализа чата</p>
+            </div>
+        </aside>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
