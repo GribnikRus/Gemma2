@@ -1,0 +1,30 @@
+[Unit]
+Description=Gemma-Hub Web Service
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=forking
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/gemma-hub
+Environment="PATH=/opt/gemma-hub/venv/bin"
+ExecStartPre=/opt/gemma-hub/venv/bin/pip install -r requirements.txt
+ExecStart=/bin/bash /opt/gemma-hub/run.sh
+ExecStop=/bin/kill -SIGTERM $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gemma-hub
+
+# Переменные окружения (опционально можно вынести в отдельный файл)
+# Environment="DATABASE_URL=postgresql://bot_user:YesNo1977@192.168.0.34:5432/sleep_data_db"
+# Environment="REDIS_BROKER_URL=redis://localhost:6379/0"
+# Environment="OLLAMA_URL=http://192.168.0.166:11434/api/generate"
+
+# Лимиты ресурсов
+LimitNOFILE=65536
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
