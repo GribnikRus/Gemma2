@@ -246,6 +246,7 @@ class OllamaClient:
         Ты выступаешь в роли: {role_prompt}
         
         Проанализируй следующий диалог и предоставь свой анализ согласно выбранной роли.
+        Будь конкретен, структурирован и полезен в своем анализе.
         
         ДИАЛОГ:
         {formatted_messages}
@@ -256,6 +257,71 @@ class OllamaClient:
         result = self.chat(prompt, system_prompt=role_prompt)
         logger.info(f"Observer analysis completed ({len(result)} chars)")
         return result
+    
+    def analyze_image_batch(self, images_base64: List[str], prompt: str = "Опишите эти изображения подробно.") -> str:
+        """
+        Анализ нескольких изображений одновременно (мультимодальность Gemma 4).
+        Использует /api/chat endpoint с массивом изображений.
+        
+        Args:
+            images_base64: Список изображений в base64
+            prompt: Промт для анализа
+        
+        Returns:
+            Текстовое описание изображений
+        """
+        logger.info(f"Analyzing {len(images_base64)} images with {OLLAMA_MODEL_VISION} (prompt: {prompt[:50]}...)")
+        
+        try:
+            response = self.chat(
+                message=prompt,
+                images=images_base64,  # Передаем массив изображений
+                system_prompt="Ты эксперт по анализу изображений. Сравнивай, находи сходства и различия между изображениями. Описывай детально что видишь на каждой картинке и как они соотносятся друг с другом."
+            )
+            
+            if response.startswith("Ошибка Ollama:"):
+                logger.error(f"Batch image analysis failed: {response}")
+            else:
+                logger.info(f"Batch image analysis completed ({len(response)} chars)")
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Unexpected error during batch image analysis: {str(e)}")
+            return f"Ошибка анализа изображений: {str(e)}"
+    
+    def transcribe_and_analyze_audio(self, text_from_whisper: str) -> dict:
+        """
+        Анализ транскрибированного текста аудио через Gemma 4.
+        
+        Args:
+            text_from_whisper: Текст полученный от Whisper (или другой speech-to-text системы)
+        
+        Returns:
+            dict с транскрибацией и анализом
+        """
+        logger.info(f"Analyzing audio transcription ({len(text_from_whisper)} chars)")
+        
+        analysis_prompt = """
+        Проанализируй следующую транскрибацию аудио. Выполни следующие задачи:
+        1. Выдели главные мысли и ключевые тезисы
+        2. Составь краткое резюме содержания
+        3. Отметь важные детали или выводы
+        
+        Транскрибация:
+        """
+        
+        analysis = self.chat(
+            message=f"{analysis_prompt}\n\n{text_from_whisper}",
+            system_prompt="Ты эксперт по анализу текстов и аудио-контента. Твоя задача — выделять суть и структурировать информацию."
+        )
+        
+        logger.info(f"Audio content analysis completed ({len(analysis)} chars)")
+        
+        return {
+            'transcription': text_from_whisper,
+            'analysis': analysis
+        }
 
 
 # Глобальный экземпляр клиента
