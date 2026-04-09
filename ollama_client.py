@@ -2,10 +2,24 @@
 Клиент для взаимодействия с Ollama API.
 Унифицированный класс для отправки запросов к модели.
 """
+import logging
 import requests
 import base64
 from typing import Optional, List
-from config import OLLAMA_URL, OLLAMA_MODEL_CHAT, OLLAMA_MODEL_VISION
+from config import (
+    OLLAMA_URL, 
+    OLLAMA_MODEL_CHAT, 
+    OLLAMA_MODEL_VISION,
+    OLLAMA_TEMPERATURE,
+    OLLAMA_TOP_K,
+    OLLAMA_TOP_P,
+    LOG_FORMAT,
+    LOG_LEVEL
+)
+
+# Настройка логирования
+logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, LOG_LEVEL))
+logger = logging.getLogger("ollama")
 
 
 class OllamaClient:
@@ -15,65 +29,139 @@ class OllamaClient:
         self.url = url
         self.model = model
         self.timeout = 120  # секунды
+        # Параметры генерации для Gemma 4
+        self.temperature = OLLAMA_TEMPERATURE
+        self.top_k = OLLAMA_TOP_K
+        self.top_p = OLLAMA_TOP_P
     
     def generate(self, prompt: str, system_prompt: Optional[str] = None, 
-                 images: Optional[List[str]] = None, stream: bool = False) -> dict:
+                 images: Optional[List[str]] = None, stream: bool = False,
+                 temperature: Optional[float] = None,
+                 top_k: Optional[int] = None,
+                 top_p: Optional[float] = None) -> dict:
         """
-        Генерация ответа от модели.
+        Генерация ответа от модели через /api/generate endpoint.
         
         Args:
             prompt: Основной промт
             system_prompt: Системный промт (роль ИИ)
             images: Список base64 кодированных изображений
             stream: Потоковый режим
+            temperature: Температура генерации (0.0-2.0)
+            top_k: Top-K sampling
+            top_p: Top-P (nucleus) sampling
         
         Returns:
             dict с ответом от API
         """
+        logger.debug(f"Sending request to {self.model} (prompt length: {len(prompt)} chars)")
+        
         payload = {
             "model": self.model,
             "prompt": prompt,
-            "stream": stream
+            "stream": stream,
+            "options": {
+                "temperature": temperature if temperature is not None else self.temperature,
+                "top_k": top_k if top_k is not None else self.top_k,
+                "top_p": top_p if top_p is not None else self.top_p,
+            }
         }
         
         if system_prompt:
             payload["system"] = system_prompt
+            logger.debug(f"System prompt set: {len(system_prompt)} chars")
         
         if images:
             payload["images"] = images
+            logger.debug(f"Attached {len(images)} image(s) for vision analysis")
         
         try:
             response = requests.post(
-                self.url,
+                f"{self.url}/api/generate",
                 json=payload,
                 timeout=self.timeout
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            logger.info(f"Received response from {self.model} ({len(result.get('response', ''))} chars)")
+            return result
         except requests.exceptions.RequestException as e:
+            logger.error(f"Request failed: {str(e)}")
             return {"error": str(e), "response": None}
     
-    def chat(self, message: str, system_prompt: Optional[str] = None) -> str:
+    def chat(self, message: str, system_prompt: Optional[str] = None,
+             images: Optional[List[str]] = None,
+             temperature: Optional[float] = None,
+             top_k: Optional[int] = None,
+             top_p: Optional[float] = None) -> str:
         """
-        Обычный чат с моделью.
+        Чат с моделью через /api/chat endpoint (предпочтительно для диалогов).
+        Поддерживает мультимодальность (изображения в поле images).
         
         Args:
             message: Сообщение пользователя
-            system_prompt: Системный промт (опционально)
+            system_prompt: Системный промт (роль ИИ)
+            images: Список base64 кодированных изображений (для мультимодальных моделей)
+            temperature: Температура генерации
+            top_k: Top-K sampling
+            top_p: Top-P sampling
         
         Returns:
             Текст ответа или сообщение об ошибке
         """
-        result = self.generate(prompt=message, system_prompt=system_prompt)
+        logger.info(f"Chat request to {self.model} (message length: {len(message)} chars)")
         
-        if "error" in result:
-            return f"Ошибка Ollama: {result['error']}"
+        # Формируем сообщения в формате Ollama Chat API
+        messages = []
         
-        return result.get("response", "Нет ответа от модели")
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        
+        # Базовое сообщение пользователя
+        user_message = {"role": "user", "content": message}
+        if images:
+            user_message["images"] = images
+            logger.debug(f"Attaching {len(images)} image(s) to chat message")
+        
+        messages.append(user_message)
+        
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": temperature if temperature is not None else self.temperature,
+                "top_k": top_k if top_k is not None else self.top_k,
+                "top_p": top_p if top_p is not None else self.top_p,
+            }
+        }
+        
+        try:
+            response = requests.post(
+                f"{self.url}/api/chat",
+                json=payload,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            # Извлекаем ответ из формата chat API
+            content = result.get("message", {}).get("content", "")
+            if content:
+                logger.info(f"Chat response received ({len(content)} chars)")
+                return content
+            else:
+                logger.warning("Empty response from chat API")
+                return "Нет ответа от модели"
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Chat request failed: {str(e)}")
+            return f"Ошибка Ollama: {str(e)}"
     
     def analyze_image(self, image_base64: str, prompt: str = "Опиши это изображение подробно.") -> str:
         """
-        Анализ изображения через vision-модель.
+        Анализ изображения через vision-модель (Gemma 4 с поддержкой мультимодальности).
+        Использует /api/chat endpoint с полем images для корректной передачи изображений.
         
         Args:
             image_base64: Изображение в base64
@@ -82,22 +170,26 @@ class OllamaClient:
         Returns:
             Текстовое описание изображения
         """
-        # Используем vision модель если она отличается
-        original_model = self.model
-        self.model = OLLAMA_MODEL_VISION
+        logger.info(f"Analyzing image with {OLLAMA_MODEL_VISION} (prompt: {prompt[:50]}...)")
         
+        # Используем chat endpoint с images для мультимодального запроса
         try:
-            result = self.generate(
-                prompt=prompt,
-                images=[image_base64]
+            response = self.chat(
+                message=prompt,
+                images=[image_base64],
+                system_prompt="Ты эксперт по анализу изображений. Описывай детально что видишь на картинке."
             )
             
-            if "error" in result:
-                return f"Ошибка анализа изображения: {result['error']}"
+            if response.startswith("Ошибка Ollama:"):
+                logger.error(f"Image analysis failed: {response}")
+            else:
+                logger.info(f"Image analysis completed ({len(response)} chars)")
             
-            return result.get("response", "Не удалось проанализировать изображение")
-        finally:
-            self.model = original_model
+            return response
+            
+        except Exception as e:
+            logger.error(f"Unexpected error during image analysis: {str(e)}")
+            return f"Ошибка анализа изображения: {str(e)}"
     
     def transcribe_audio_stub(self, audio_description: str) -> str:
         """
@@ -110,6 +202,7 @@ class OllamaClient:
         Returns:
             Эмулированный текст транскрибации
         """
+        logger.debug(f"Audio transcription stub called for: {audio_description}")
         # Пока эмулируем ответ - в реальности здесь будет вызов Whisper
         prompt = f"""
         Это заглушка для транскрибации аудио. 
@@ -136,6 +229,8 @@ class OllamaClient:
         Returns:
             Анализ чата
         """
+        logger.info(f"Observer analysis started (type: {analysis_type}, messages: {len(messages)})")
+        
         # Ограничиваем количество сообщений для quick анализа
         if analysis_type == 'quick':
             messages_to_analyze = messages[-10:]
@@ -158,7 +253,9 @@ class OllamaClient:
         Твой анализ:
         """
         
-        return self.chat(prompt, system_prompt=role_prompt)
+        result = self.chat(prompt, system_prompt=role_prompt)
+        logger.info(f"Observer analysis completed ({len(result)} chars)")
+        return result
 
 
 # Глобальный экземпляр клиента
