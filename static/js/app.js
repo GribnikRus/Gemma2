@@ -701,8 +701,15 @@ async function analyzeWithObserver() {
     
     const roleSelect = document.getElementById('observer-role');
     const typeSelect = document.getElementById('observer-type');
+    const customPromptInput = document.getElementById('observer-custom-prompt');
     
-    const role = roleSelect ? roleSelect.value : 'Ты аналитик.';
+    let role = roleSelect ? roleSelect.value : 'Ты аналитик.';
+    
+    // Если выбран Custom, используем кастомный промт
+    if (role === 'Custom' && customPromptInput) {
+        role = customPromptInput.value.trim() || 'Ты аналитик.';
+    }
+    
     const analysisType = typeSelect ? typeSelect.value : 'quick';
     
     try {
@@ -714,11 +721,62 @@ async function analyzeWithObserver() {
             analysis_type: analysisType
         });
         
-        showMessage('ai', `📊 Анализ завершен. Проанализировано сообщений: ${result.messages_analyzed}\n\n${result.analysis}`);
+        // Выводим результат в панель наблюдателя
+        const resultsContainer = document.getElementById('observer-results-container');
+        const resultEl = document.getElementById('observer-analysis-result');
+        
+        if (resultsContainer && resultEl) {
+            resultsContainer.classList.remove('hidden');
+            resultEl.textContent = result.analysis;
+        }
+        
+        showMessage('ai', `📊 Анализ завершен. Проанализировано сообщений: ${result.messages_analyzed}`);
         
     } catch (error) {
         console.error('Ошибка анализа:', error);
         showMessage('ai', `Ошибка: ${error.message}`);
+    }
+}
+
+// Быстрый анализ из правой панели (для группового чата)
+async function analyzeWithObserverQuick() {
+    if (!state.currentChat || state.currentChatType !== 'group') {
+        alert('Режим наблюдателя доступен только в групповых чатах');
+        return;
+    }
+    
+    const roleSelect = document.getElementById('observer-role-quick');
+    const customPromptInput = document.getElementById('observer-custom-prompt-quick');
+    const resultEl = document.getElementById('observer-quick-result');
+    
+    let role = roleSelect ? roleSelect.value : 'Критик';
+    
+    // Если выбран Custom, используем кастомный промт
+    if (role === 'Custom' && customPromptInput) {
+        role = customPromptInput.value.trim() || 'Ты аналитик.';
+    }
+    
+    try {
+        if (resultEl) {
+            resultEl.classList.remove('hidden');
+            resultEl.textContent = '⏳ Анализ...';
+        }
+        
+        const result = await apiRequest('/api/group/observe', 'POST', {
+            group_id: state.currentChat.id,
+            role_prompt: role,
+            analysis_type: 'quick'
+        });
+        
+        if (resultEl) {
+            resultEl.textContent = result.analysis;
+        }
+        
+    } catch (error) {
+        console.error('Ошибка быстрого анализа:', error);
+        if (resultEl) {
+            resultEl.textContent = `Ошибка: ${error.message}`;
+        }
     }
 }
 
