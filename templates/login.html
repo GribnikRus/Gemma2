@@ -2,47 +2,149 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Gemma Hub - Вход</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        :root {
+            --primary: #3390ec;
+            --primary-hover: #2876c4;
+            --bg-gradient: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            --card-bg: #ffffff;
+            --text-main: #222;
+            --text-sec: #707579;
+            --error: #e53935;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif; }
+
+        body {
+            background: var(--bg-gradient);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .login-card {
+            background: var(--card-bg);
+            padding: 40px 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .logo { font-size: 3rem; margin-bottom: 10px; display: block; }
+        h1 { color: var(--text-main); font-size: 1.8rem; margin-bottom: 5px; }
+        .subtitle { color: var(--text-sec); margin-bottom: 30px; font-size: 0.95rem; }
+
+        .tabs { display: flex; background: #f0f2f5; padding: 4px; border-radius: 10px; margin-bottom: 25px; }
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: transparent;
+            color: var(--text-sec);
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: 0.3s;
+        }
+        .tab-btn.active { background: #fff; color: var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+
+        .form-group { margin-bottom: 20px; text-align: left; }
+        label { display: block; margin-bottom: 8px; color: var(--text-main); font-weight: 500; font-size: 0.9rem; }
+        input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: 0.2s;
+            outline: none;
+        }
+        input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(51, 144, 236, 0.1); }
+
+        .btn-submit {
+            width: 100%;
+            padding: 14px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            margin-top: 10px;
+        }
+        .btn-submit:hover { background: var(--primary-hover); transform: translateY(-1px); }
+
+        .error-message { color: var(--error); font-size: 0.85rem; margin-top: 15px; min-height: 20px; }
+        .hidden { display: none; }
+    </style>
 </head>
-<body class="login-page">
-    <div class="login-container">
+<body>
+    <div class="login-card">
+        <span class="logo">🤖</span>
         <h1>Gemma Hub</h1>
         <p class="subtitle">Ваш персональный AI ассистент</p>
         
-        <div class="auth-tabs">
+        <div class="tabs">
             <button class="tab-btn active" data-tab="login">Вход</button>
             <button class="tab-btn" data-tab="register">Регистрация</button>
         </div>
         
-        <form id="login-form" class="auth-form">
+        <form id="login-form">
             <div class="form-group">
                 <label for="login-username">Логин</label>
-                <input type="text" id="login-username" required autocomplete="username">
+                <input type="text" id="login-username" placeholder="Введите логин" required autocomplete="username">
             </div>
             <div class="form-group">
                 <label for="login-password">Пароль</label>
-                <input type="password" id="login-password" required autocomplete="current-password">
+                <input type="password" id="login-password" placeholder="Введите пароль" required autocomplete="current-password">
             </div>
-            <button type="submit" class="btn btn-primary full-width">Войти</button>
+            <button type="submit" class="btn-submit">Войти в аккаунт</button>
             <div id="login-error" class="error-message"></div>
         </form>
         
-        <form id="register-form" class="auth-form hidden">
+        <form id="register-form" class="hidden">
             <div class="form-group">
-                <label for="register-username">Логин</label>
-                <input type="text" id="register-username" required minlength="3" autocomplete="username">
+                <label for="register-username">Придумайте логин</label>
+                <input type="text" id="register-username" placeholder="Только латиница и цифры" required minlength="3" autocomplete="username">
             </div>
             <div class="form-group">
-                <label for="register-password">Пароль</label>
-                <input type="password" id="register-password" required minlength="6" autocomplete="new-password">
+                <label for="register-password">Придумайте пароль</label>
+                <input type="password" id="register-password" placeholder="Минимум 6 символов" required minlength="6" autocomplete="new-password">
             </div>
-            <button type="submit" class="btn btn-primary full-width">Зарегистрироваться</button>
+            <button type="submit" class="btn-submit">Создать аккаунт</button>
             <div id="register-error" class="error-message"></div>
         </form>
     </div>
     
     <script src="/static/js/app.js"></script>
+    <script>
+        // Простая логика переключения табов прямо здесь, чтобы не зависеть от app.js при загрузке
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const tab = btn.dataset.tab;
+                document.getElementById('login-form').classList.toggle('hidden', tab !== 'login');
+                document.getElementById('register-form').classList.toggle('hidden', tab !== 'register');
+                // Очистка ошибок
+                document.getElementById('login-error').textContent = '';
+                document.getElementById('register-error').textContent = '';
+            });
+        });
+    </script>
 </body>
 </html>

@@ -12,6 +12,7 @@ from functools import wraps
 from datetime import datetime
 
 from config import SECRET_KEY, UPLOAD_FOLDER, MAX_CONTENT_LENGTH, LOG_FORMAT, LOG_LEVEL
+# ИСПРАВЛЕНО: Добавлены PersonalChat и ChatGroup в импорт
 from db import (
     init_db, get_db, SessionLocal,
     get_client_by_login, get_client_by_id,
@@ -23,7 +24,7 @@ from db import (
     create_observer_session, add_observer_analysis,
     update_client_last_seen, get_all_users_with_status, get_pending_invitations,
     accept_invitation, toggle_chat_ai_enabled, get_personal_chat_by_id, get_group_by_id,
-    Client, ChatGroup, GroupMember, TaskHistory
+    Client, ChatGroup, GroupMember, TaskHistory, PersonalChat  # <--- ДОБАВЛЕНО PersonalChat
 )
 from ollama_client import OllamaClient
 
@@ -955,9 +956,6 @@ def get_client_chats():
         db.close()
 
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5002, debug=True)
-
 # ==================== СТАТУС ПОЛЬЗОВАТЕЛЕЙ ====================
 
 @app.route('/api/users/list', methods=['GET'])
@@ -966,9 +964,33 @@ def get_users_list():
     """Возвращает список всех пользователей со статусом online/offline"""
     db = SessionLocal()
     try:
-        users = get_all_users_with_status(db)
-        logger.info(f"Users list retrieved for client {session['client_id']}")
-        return jsonify({'users': users})
+        clients = db.query(Client).all()
+        users_data = []
+        now = datetime.utcnow()
+        
+        for c in clients:
+            is_online = False
+            if c.last_seen:
+                # Приводим last_seen к naive (без timezone), если оно aware, 
+                # или наоборот, чтобы сравнение работало
+                last = c.last_seen
+                if last.tzinfo is not None:
+                    last = last.replace(tzinfo=None)
+                
+                diff = (now - last).total_seconds()
+                if diff < 300: # 5 минут
+                    is_online = True
+            
+            users_data.append({
+                'id': c.id,
+                'login': c.login,
+                'is_online': is_online
+            })
+            
+        return jsonify({'users': users_data})
+    except Exception as e:
+        logger.error(f"Error getting users list: {e}")
+        return jsonify({'error': str(e)}), 500
     finally:
         db.close()
 
@@ -1056,25 +1078,37 @@ def toggle_ai():
     if not chat_type or not chat_id:
         return jsonify({'error': 'Необходимо указать chat_type и chat_id'}), 400
     
-    if chat_type not in ['personal', 'group']:
-        return jsonify({'error': 'Неверный тип чата'}), 400
-    
     db = SessionLocal()
     try:
-        if chat_type == 'personal':
-            chat = get_personal_chat_by_id(db, chat_id)
-            if not chat or chat.owner_id != session['client_id']:
-                return jsonify({'error': 'Чат не найден'}), 404
-            new_value = not chat.ai_enabled
-        else:
-            group = get_group_by_id(db, chat_id)
-            if not group or group.owner_id != session['client_id']:
-                return jsonify({'error': 'Группа не найдена'}), 404
-            new_value = not group.ai_enabled
+        chat = None
         
-        toggle_chat_ai_enabled(db, chat_type, chat_id, new_value)
-        logger.info(f"Toggled ai_enabled to {new_value} for {chat_type} chat {chat_id}")
-        return jsonify({'ai_enabled': new_value})
+        # Ищем чат в зависимости от типа
+        # ИСПРАВЛЕНО: Теперь PersonalChat и ChatGroup импортированы и доступны
+        if chat_type == 'personal':
+            chat = db.query(PersonalChat).filter(
+                PersonalChat.id == chat_id,
+                PersonalChat.owner_id == session['client_id']
+            ).first()
+        elif chat_type == 'group':
+            chat = db.query(ChatGroup).filter(
+                ChatGroup.id == chat_id,
+                ChatGroup.owner_id == session['client_id']
+            ).first()
+            
+        if not chat:
+            return jsonify({'error': 'Чат не найден или нет прав'}), 404
+        
+        # Переключаем значение
+        chat.ai_enabled = not chat.ai_enabled
+        db.commit()
+        
+        logger.info(f"AI toggled to {chat.ai_enabled} for {chat_type} #{chat_id}")
+        return jsonify({'ai_enabled': chat.ai_enabled})
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error toggling AI: {e}")
+        return jsonify({'error': str(e)}), 500
     finally:
         db.close()
 
@@ -1120,3 +1154,8 @@ def observe_personal_chat():
         return jsonify({'result': ai_response, 'messages_analyzed': len(history)})
     finally:
         db.close()
+
+if __name__ == '__main__':
+    # Обновляем last_seen при старте (опционально)
+    logger.info("Starting Gemma-Hub Server...")
+    app.run(host='0.0.0.0', port=5002, debug=True)

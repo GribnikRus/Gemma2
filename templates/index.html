@@ -3,248 +3,164 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gemma Hub - AI Assistant</title>
+    <title>Gemma Hub</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <!-- Модальное окно авторизации/регистрации -->
+    <!-- Авторизация -->
     <div id="auth-modal" class="modal">
-        <div class="modal-content auth-container">
+        <div class="auth-box">
             <h2>Gemma Hub</h2>
-            <div class="auth-tabs">
-                <button class="tab-btn active" data-tab="login">Вход</button>
-                <button class="tab-btn" data-tab="register">Регистрация</button>
+            <div class="tabs">
+                <button class="tab active" data-tab="login">Вход</button>
+                <button class="tab" data-tab="register">Регистрация</button>
             </div>
-            
-            <form id="login-form" class="auth-form">
-                <div class="form-group">
-                    <label for="login-username">Логин</label>
-                    <input type="text" id="login-username" required>
-                </div>
-                <div class="form-group">
-                    <label for="login-password">Пароль</label>
-                    <input type="password" id="login-password" required>
-                </div>
-                <button type="submit" class="btn btn-primary full-width">Войти</button>
-                <div id="login-error" class="error-message"></div>
+            <form id="login-form">
+                <input type="text" id="login-username" placeholder="Логин" required>
+                <input type="password" id="login-password" placeholder="Пароль" required>
+                <button type="submit" class="btn-primary" style="width:100%; padding:10px; background:#3390ec; color:white; border:none; border-radius:8px;">Войти</button>
+                <div id="login-error" class="error" style="color:red; font-size:0.8rem;"></div>
             </form>
-            
-            <form id="register-form" class="auth-form hidden">
-                <div class="form-group">
-                    <label for="register-username">Логин</label>
-                    <input type="text" id="register-username" required minlength="3">
-                </div>
-                <div class="form-group">
-                    <label for="register-password">Пароль</label>
-                    <input type="password" id="register-password" required minlength="6">
-                </div>
-                <button type="submit" class="btn btn-primary full-width">Зарегистрироваться</button>
-                <div id="register-error" class="error-message"></div>
+            <form id="register-form" class="hidden">
+                <input type="text" id="register-username" placeholder="Логин" required>
+                <input type="password" id="register-password" placeholder="Пароль" required>
+                <button type="submit" class="btn-primary" style="width:100%; padding:10px; background:#3390ec; color:white; border:none; border-radius:8px;">Создать</button>
+                <div id="register-error" class="error" style="color:red; font-size:0.8rem;"></div>
             </form>
         </div>
     </div>
 
-    <!-- Основной интерфейс -->
     <div id="app-container" class="hidden">
-        <!-- Overlay для мобильного меню -->
-        <div class="sidebar-overlay" id="sidebar-overlay"></div>
+        <div class="overlay" id="overlay"></div>
         
-        <!-- Кнопка гамбургер для мобильных -->
-        <div class="hamburger-menu" id="hamburger-menu">
-            <span></span>
-            <span></span>
-            <span></span>
-        </div>
-        
-        <!-- Левая панель навигации -->
+        <!-- Левая панель: Чаты и Список пользователей -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <h1>Gemma Hub</h1>
-                <span id="user-display" class="user-info"></span>
-            </div>
-            
-            <div class="sidebar-section">
-                <button id="new-chat-btn" class="btn btn-secondary full-width">
-                    + Новый чат
-                </button>
-            </div>
-            
-            <div class="sidebar-section">
-                <h3>Мои чаты</h3>
-                <div id="chats-list" class="chats-list">
-                    <!-- Список чатов загружается динамически -->
+                <div class="user-profile">
+                    <div class="avatar" id="user-avatar">U</div>
+                    <span id="user-display">User</span>
                 </div>
+                <button id="logout-btn" class="icon-btn">🚪</button>
             </div>
             
-            <div class="sidebar-section">
-                <h3>Группы</h3>
-                <div class="create-group-form">
-                    <input type="text" id="new-group-name" placeholder="Название группы">
-                    <button id="create-group-btn" class="btn btn-sm">Создать</button>
-                </div>
-                <div id="groups-list" class="groups-list">
-                    <!-- Список групп загружается динамически -->
-                </div>
+            <div class="chat-list-container">
+                <h4 style="padding:5px; color:#707579;">ЧАТЫ</h4>
+                <div id="chats-list"></div>
+                
+                <h4 style="padding:5px; color:#707579; margin-top:15px;">ГРУППЫ</h4>
+                <div id="groups-list"></div>
+                
+                <h4 style="padding:5px; color:#707579; margin-top:15px;">ОНЛАЙН</h4>
+                <ul id="users-list-container" class="online-list" style="list-style:none; padding:5px;"></ul>
             </div>
-            
-            <div class="sidebar-footer">
-                <button id="logout-btn" class="btn btn-danger full-width">Выход</button>
-            </div>
+            <button id="new-chat-btn" class="fab" style="position:absolute; bottom:20px; right:20px; width:50px; height:50px; border-radius:50%; background:#3390ec; color:white; border:none; font-size:1.5rem;">✏️</button>
         </aside>
 
-        <!-- Центральная область -->
-        <main class="main-content">
-            <!-- Заголовок текущего чата -->
+        <!-- Центр: Чат -->
+        <main class="main-chat">
             <header class="chat-header">
-                <h2 id="current-chat-title">Выберите чат</h2>
-                <div class="chat-mode-selector">
-                    <button class="mode-btn active" data-mode="chat">💬 Чат</button>
-                    <button class="mode-btn" data-mode="image">🖼️ Анализ фото</button>
-                    <button class="mode-btn" data-mode="audio">🎤 Аудио</button>
-                    <button class="mode-btn" data-mode="observer" id="observer-mode-btn">👁️ Наблюдатель</button>
+                <button id="menu-toggle" class="icon-btn mobile-only" style="font-size:1.5rem; margin-right:10px;">☰</button>
+                <div class="chat-info">
+                    <h3 id="current-chat-title">Выберите чат</h3>
+                    <span id="chat-status" class="status-text"></span>
                 </div>
-                <!-- Переключатель ИИ -->
-                <div class="ai-toggle-container">
-                    <label class="ai-toggle-switch">
-                        <input type="checkbox" id="ai-enabled-toggle" checked>
-                        <span class="ai-toggle-slider"></span>
+                <div class="header-actions">
+                    <label class="ai-switch" title="Ответы ИИ" style="margin-right:10px; display:inline-block; width:40px; height:20px; background:#ccc; border-radius:20px; position:relative;">
+                        <input type="checkbox" id="ai-enabled-toggle" checked style="opacity:0; width:0; height:0;">
+                        <span class="slider" style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:#ccc; transition:.4s; border-radius:20px;"></span>
                     </label>
-                    <span style="font-size: 0.75rem; color: var(--text-secondary);">ИИ</span>
+                    <button id="info-toggle" class="icon-btn desktop-only" style="font-size:1.2rem;">ℹ️</button>
                 </div>
             </header>
-            
-            <!-- Окно переписки -->
-            <div id="messages-container" class="messages-container">
-                <div class="welcome-message">
-                    <h3>Добро пожаловать в Gemma Hub!</h3>
-                    <p>Выберите существующий чат или создайте новый, чтобы начать общение с ИИ.</p>
+
+            <div id="messages-container" class="messages-area">
+                <div class="welcome-screen" style="text-align:center; margin-top:50px; color:white;">
+                    <div style="font-size:3rem;">🤖</div>
+                    <h3>Gemma 4 Assistant</h3>
                 </div>
             </div>
-            
+
+            <!-- Панель режимов -->
+            <div class="toolbar">
+                <button class="tool-btn active" data-mode="chat">💬</button>
+                <button class="tool-btn" data-mode="image">🖼️</button>
+                <button class="tool-btn" data-mode="audio">🎙️</button>
+                <button class="tool-btn" data-mode="observer">👁️</button>
+            </div>
+
             <!-- Область ввода -->
             <footer class="input-area">
-                <!-- Режим чата -->
-                <div id="chat-input-container" class="input-container">
-                    <textarea id="message-input" placeholder="Введите сообщение..." rows="1"></textarea>
-                    <button id="send-btn" class="btn btn-primary">➤</button>
+                <!-- Чат -->
+                <div id="chat-input-container" class="input-wrapper">
+                    <textarea id="message-input" placeholder="Сообщение..." rows="1"></textarea>
+                    <button id="send-btn" class="send-btn">➤</button>
                 </div>
                 
-                <!-- Режим анализа изображений (мультимодальный) -->
-                <div id="image-input-container" class="input-container hidden">
-                    <div class="file-upload-wrapper">
-                        <input type="file" id="image-file" accept="image/*" multiple>
-                        <label for="image-file" class="file-upload-label">📁 Выбрать изображения</label>
-                    </div>
-                    <div id="image-preview-container" class="preview-container"></div>
-                    <textarea id="image-prompt-input" placeholder="Опишите что нужно сделать с изображениями..." rows="2"></textarea>
-                    <button id="upload-image-btn" class="btn btn-primary">Анализировать</button>
+                <!-- Картинки -->
+                <div id="image-input-container" class="input-wrapper hidden">
+                    <input type="file" id="image-file" multiple accept="image/*" style="display:none;">
+                    <label for="image-file" class="btn-primary" style="padding:10px; border-radius:8px; cursor:pointer;">Выбрать фото</label>
+                    <div id="image-preview-container" style="display:flex; gap:5px;"></div>
+                    <button id="upload-image-btn" class="send-btn" style="width:auto; border-radius:8px; padding:0 15px;">Отправить</button>
                 </div>
-                
-                <!-- Режим аудио (Аудио-лаборатория) -->
-                <div id="audio-input-container" class="input-container hidden">
-                    <div class="audio-lab-panel">
-                        <h4>🎙️ Аудио-лаборатория</h4>
-                        <p class="hint">Загрузите аудиофайл для транскрибации и анализа содержания</p>
-                        <div class="file-upload-wrapper">
-                            <input type="file" id="audio-file" accept="audio/*">
-                            <label for="audio-file" class="file-upload-label">🎵 Выбрать аудиофайл</label>
-                        </div>
-                        <div id="audio-file-info" class="file-info"></div>
-                        <button id="upload-audio-btn" class="btn btn-primary">Транскрибировать и Анализировать</button>
-                    </div>
-                    <!-- Результаты аудио обработки -->
-                    <div id="audio-results-container" class="results-container hidden">
-                        <div class="result-section">
-                            <h5>📝 Текст речи (транскрибация)</h5>
-                            <div id="audio-transcription" class="result-text"></div>
-                        </div>
-                        <div class="result-section">
-                            <h5>🧠 Анализ содержания</h5>
-                            <div id="audio-analysis" class="result-text"></div>
-                        </div>
-                    </div>
+
+                <!-- Аудио -->
+                <div id="audio-input-container" class="input-wrapper hidden">
+                     <input type="file" id="audio-file" accept="audio/*" style="display:none;">
+                     <label for="audio-file" class="btn-primary" style="padding:10px; border-radius:8px; cursor:pointer;">Выбрать аудио</label>
+                     <button id="upload-audio-btn" class="send-btn" style="width:auto; border-radius:8px; padding:0 15px;">Обработать</button>
+                     <div id="audio-results-container" class="results-box hidden" style="position:absolute; bottom:70px; left:10px; right:10px; background:white;"></div>
                 </div>
-                
-                <!-- Режим наблюдателя -->
-                <div id="observer-input-container" class="input-container hidden">
-                    <div class="observer-panel">
-                        <div class="observer-controls">
-                            <label>Роль наблюдателя:</label>
-                            <select id="observer-role">
-                                <option value="Критик">🔍 Критик (ищет логические ошибки)</option>
-                                <option value="Саммаризатор">📋 Саммаризатор (делает краткий итог)</option>
-                                <option value="Эксперт по фактам">✅ Эксперт по фактам (проверяет утверждения)</option>
-                                <option value="Психолог">🧠 Психолог (анализирует тон общения)</option>
-                                <option value="Custom">✏️ Custom (свой промт)</option>
-                            </select>
-                            <input type="text" id="observer-custom-prompt" class="hidden" placeholder="Введите свою роль/промт...">
-                        </div>
-                        <div class="observer-controls">
-                            <label>Тип анализа:</label>
-                            <select id="observer-type">
-                                <option value="quick">⚡ Быстрый анализ (последние 10 сообщений)</option>
-                                <option value="full">📊 Полный отчет (все сообщения)</option>
-                            </select>
-                            <button id="analyze-btn" class="btn btn-primary">🔍 Анализировать</button>
-                        </div>
-                    </div>
-                    <!-- Результаты анализа наблюдателя -->
-                    <div id="observer-results-container" class="results-container hidden">
-                        <div class="result-section">
-                            <h5>👁️ Результат анализа наблюдателя</h5>
-                            <div id="observer-analysis-result" class="result-text"></div>
-                        </div>
-                    </div>
+
+                <!-- Наблюдатель (Кнопка просто открывает правую панель) -->
+                <div id="observer-input-container" class="input-wrapper hidden">
+                    <p style="width:100%; text-align:center; color:#707579;">Нажмите ℹ️ или 👁️ для просмотра анализа</p>
                 </div>
             </footer>
         </main>
 
-        <!-- Правая панель -->
-        <aside class="right-panel hidden" id="right-panel">
-            <div class="panel-section">
-                <h3>Участники</h3>
-                <div id="members-list" class="members-list">
-                    <!-- Список участников для группового чата -->
-                </div>
+        <!-- Правая панель: Инфо, Участники и РЕЗУЛЬТАТЫ НАБЛЮДАТЕЛЯ -->
+        <aside class="right-panel" id="right-panel">
+            <div class="panel-header">
+                <h3>Информация</h3>
+                <button id="close-right-panel" class="icon-btn mobile-only">✕</button>
             </div>
             
-            <!-- Приглашения в группу -->
-            <div class="panel-section">
-                <h3>Пригласить участника</h3>
-                <div class="form-group" style="display: flex; gap: 0.5rem;">
-                    <input type="text" id="invite-login-input" placeholder="Логин пользователя" style="flex: 1;">
-                    <button id="invite-user-btn" class="btn btn-sm btn-primary">Пригласить</button>
-                </div>
-            </div>
-            
-            <!-- Панель Наблюдателя (в групповом режиме) -->
-            <div class="panel-section observer-panel-fixed" id="observer-panel-fixed">
-                <h3>👁️ Панель Наблюдателя</h3>
-                <p class="hint">Быстрый доступ к анализу диалога</p>
-                <div class="observer-quick-controls">
-                    <select id="observer-role-quick">
-                        <option value="Критик">Критик</option>
-                        <option value="Саммаризатор">Саммаризатор</option>
-                        <option value="Эксперт по фактам">Эксперт по фактам</option>
-                        <option value="Психолог">Психолог</option>
-                        <option value="Custom">Custom</option>
+            <div class="panel-content">
+                <!-- Блок Наблюдателя -->
+                <div id="observer-section" style="margin-bottom:20px;">
+                    <h4>👁️ Анализ диалога</h4>
+                    <select id="observer-role" style="width:100%; padding:8px; margin-bottom:10px; border-radius:6px; border:1px solid #ddd;">
+                        <option value="Критик">🔍 Критик</option>
+                        <option value="Саммаризатор">📋 Саммари</option>
+                        <option value="Психолог">🧠 Психолог</option>
                     </select>
-                    <input type="text" id="observer-custom-prompt-quick" class="hidden" placeholder="Ваш промт...">
-                    <button id="analyze-quick-btn" class="btn btn-sm btn-primary">Анализ</button>
+                    <button id="analyze-btn" class="btn-primary" style="width:100%; padding:8px; background:#3390ec; color:white; border:none; border-radius:6px;">Запустить анализ</button>
+                    
+                    <div id="observer-results-container" class="results-box hidden" style="margin-top:10px;">
+                        <div id="observer-analysis-result"></div>
+                    </div>
                 </div>
-                <div id="observer-quick-result" class="observer-quick-result hidden"></div>
-            </div>
-            
-            <!-- Входящие приглашения -->
-            <div class="panel-section">
-                <h3>📨 Входящие приглашения</h3>
-                <div id="invitations-list" class="members-list">
-                    <!-- Список приглашений -->
+
+                <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
+
+                <!-- Участники группы -->
+                <div id="members-section" class="hidden">
+                    <h4>Участники</h4>
+                    <div id="members-list"></div>
+                    <div class="invite-box" style="display:flex; gap:5px; margin-top:10px;">
+                        <input type="text" id="invite-login-input" placeholder="Логин" style="flex:1; padding:5px;">
+                        <button id="invite-user-btn" class="btn-sm" style="background:#3390ec; color:white; border:none; padding:5px 10px; border-radius:4px;">+</button>
+                    </div>
+                </div>
+                
+                <div id="invitations-section" style="margin-top:20px;">
+                    <h4>Приглашения</h4>
+                    <div id="invitations-list"></div>
                 </div>
             </div>
         </aside>
     </div>
-
     <script src="/static/js/app.js"></script>
 </body>
 </html>
