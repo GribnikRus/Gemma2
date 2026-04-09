@@ -148,6 +148,19 @@ function setupEventListeners() {
             document.getElementById('invite-login-input').value = '';
         } catch(e) { alert(e.message); }
     };
+    
+    // Создание группы
+    document.getElementById('create-group-btn').onclick = async () => {
+        const nameInput = document.getElementById('new-group-name');
+        const name = nameInput.value.trim();
+        if(!name) return alert('Введите название группы');
+        try {
+            const group = await apiRequest('/api/group/create', 'POST', { name });
+            alert(`Группа "${group.name}" создана!`);
+            nameInput.value = '';
+            loadChats(); // Перезагрузить список
+        } catch(e) { alert(e.message); }
+    };
 }
 
 async function loadChats() {
