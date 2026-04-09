@@ -1,1 +1,8 @@
-Nothing should be ignored based on the provided file changes. The modified files (`app.py` and `static/css/style.css`) are source code files that should be tracked in version control.
+venv/
+__pycache__/
+*.log
+.env
+uploads/
+celery.pid
+flask.pid
+.DS_Store
