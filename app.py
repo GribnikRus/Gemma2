@@ -298,39 +298,96 @@ def send_message():
                 personal_chat_id=personal_chat_id, message_type='text'
             )
             
-            # Получаем историю для контекста
-            history = get_personal_chat_history(db, personal_chat_id, session['client_id'], limit=20)
-            context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
-            
-            # Отправляем в Ollama
-            ai_response = ollama.chat(
-                message=f"{context}\nUser: {content}",
-                system_prompt="Ты полезный ассистент. Отвечай кратко и по делу."
-            )
-            
-            # Добавляем ответ ИИ
-            ai_msg = add_message(
-                db, ai_response, 'ai', None,
-                personal_chat_id=personal_chat_id, message_type='text'
-            )
-            
-            logger.info(f"Message sent to personal chat {personal_chat_id}, status=200")
-            return jsonify({
-                'user_message': {
-                    'id': user_msg.id,
-                    'content': user_msg.content,
-                    'sender_type': user_msg.sender_type,
-                    'created_at': user_msg.created_at.isoformat()
-                },
-                'ai_message': {
+            # Проверяем флаг ai_enabled
+            ai_message = None
+            if chat.ai_enabled:
+                # Получаем историю для контекста
+                history = get_personal_chat_history(db, personal_chat_id, session['client_id'], limit=20)
+                context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
+                
+                # Отправляем в Ollama
+                ai_response = ollama.chat(
+                    message=f"{context}\nUser: {content}",
+                    system_prompt="Ты полезный ассистент. Отвечай кратко и по делу."
+                )
+                
+                # Добавляем ответ ИИ
+                ai_msg = add_message(
+                    db, ai_response, 'ai', None,
+                    personal_chat_id=personal_chat_id, message_type='text'
+                )
+                ai_message = {
                     'id': ai_msg.id,
                     'content': ai_msg.content,
                     'sender_type': ai_msg.sender_type,
                     'created_at': ai_msg.created_at.isoformat()
                 }
-            })
+            
+            logger.info(f"Message sent to personal chat {personal_chat_id}, status=200")
+            result = {
+                'user_message': {
+                    'id': user_msg.id,
+                    'content': user_msg.content,
+                    'sender_type': user_msg.sender_type,
+                    'created_at': user_msg.created_at.isoformat()
+                }
+            }
+            if ai_message:
+                result['ai_message'] = ai_message
+            return jsonify(result)
         
         elif group_id:
+            # Групповой чат
+            if not is_client_member_of_group(db, session['client_id'], group_id):
+                logger.warning(f"Client {client_id} not member of group {group_id}")
+                return jsonify({'error': 'Нет доступа к группе'}), 403
+
+            # Получаем группу для проверки ai_enabled
+            group = get_group_by_id(db, group_id)
+
+            # Добавляем сообщение пользователя
+            user_msg = add_message(
+                db, content, 'client', session['client_id'],
+                group_id=group_id, message_type='text'
+            )
+
+            # Проверяем флаг ai_enabled
+            ai_message = None
+            if group and group.ai_enabled:
+                # Получаем историю для контекста
+                history = get_group_history(db, group_id, session['client_id'], limit=20)
+                context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
+
+                # Отправляем в Ollama
+                ai_response = ollama.chat(
+                    message=f"{context}\nUser: {content}",
+                    system_prompt="Ты полезный ассистент в групповом чате. Отвечай кратко и по делу."
+                )
+
+                # Добавляем ответ ИИ
+                ai_msg = add_message(
+                    db, ai_response, 'ai', None,
+                    group_id=group_id, message_type='text'
+                )
+                ai_message = {
+                    'id': ai_msg.id,
+                    'content': ai_msg.content,
+                    'sender_type': ai_msg.sender_type,
+                    'created_at': ai_msg.created_at.isoformat()
+                }
+
+            logger.info(f"Message sent to group {group_id}, status=200")
+            result = {
+                'user_message': {
+                    'id': user_msg.id,
+                    'content': user_msg.content,
+                    'sender_type': user_msg.sender_type,
+                    'created_at': user_msg.created_at.isoformat()
+                }
+            }
+            if ai_message:
+                result['ai_message'] = ai_message
+            return jsonify(result)
             # Групповой чат
             if not is_client_member_of_group(db, session['client_id'], group_id):
                 logger.warning(f"Client {client_id} not member of group {group_id}")
@@ -342,38 +399,6 @@ def send_message():
                 group_id=group_id, message_type='text'
             )
             
-            # Получаем историю для контекста
-            history = get_group_history(db, group_id, session['client_id'], limit=20)
-            context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
-            
-            # Отправляем в Ollama
-            ai_response = ollama.chat(
-                message=f"{context}\nUser: {content}",
-                system_prompt="Ты полезный ассистент в групповом чате. Отвечай кратко и по делу."
-            )
-            
-            # Добавляем ответ ИИ
-            ai_msg = add_message(
-                db, ai_response, 'ai', None,
-                group_id=group_id, message_type='text'
-            )
-            
-            logger.info(f"Message sent to group {group_id}, status=200")
-            return jsonify({
-                'user_message': {
-                    'id': user_msg.id,
-                    'content': user_msg.content,
-                    'sender_type': user_msg.sender_type,
-                    'created_at': user_msg.created_at.isoformat()
-                },
-                'ai_message': {
-                    'id': ai_msg.id,
-                    'content': ai_msg.content,
-                    'sender_type': ai_msg.sender_type,
-                    'created_at': ai_msg.created_at.isoformat()
-                }
-            })
-        else:
             logger.warning(f"No chat specified in request from {client_ip}")
             return jsonify({'error': 'Не указан чат'}), 400
     
