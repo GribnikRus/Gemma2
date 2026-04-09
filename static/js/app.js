@@ -237,24 +237,30 @@ function renderMessages(msgs) {
     const c = document.getElementById('messages-container');
     if (!c) return;
 
+    // Отладка в консоль
+    console.log("Отрисовка сообщений. Тип чата:", state.currentChatType, "Мой ID:", state.currentUser ? state.currentUser.client_id : 'нет');
+
     c.innerHTML = msgs.map(m => {
-        const isUser = m.sender_type === 'client';
+        // Проверяем, я ли это написал (сравниваем ID)
+        // Внимание: в login ответе поле называется client_id, а в сообщении sender_id
+        const isMe = state.currentUser && (m.sender_id === state.currentUser.client_id);
+        
         let senderHtml = '';
 
         // Логика имен:
-        // 1. Если это ГРУППА и пишет НЕ я -> показываем имя участника
-        if (state.currentChatType === 'group' && !isUser && m.sender_name) {
-             senderHtml = `<span class="msg-sender" style="color: #3390ec; font-weight: bold;">${m.sender_name}</span>`;
+        // 1. Если это ГРУППА и пишет НЕ Я -> показываем имя участника
+        if (state.currentChatType === 'group' && !isMe && m.sender_name) {
+             senderHtml = `<span class="msg-sender" style="color: #3390ec; font-weight: bold; display:block; margin-bottom:2px; font-size:0.8rem;">${m.sender_name}</span>`;
         } 
-        // 2. Если пишет ИИ (в любом чате) -> показываем "Gemma"
-        else if (!isUser) {
-             senderHtml = `<span class="msg-sender" style="color: #e53935; font-weight: bold;">Gemma AI</span>`;
+        // 2. Если пишет ИИ (в любом чате) -> показываем "Gemma AI"
+        else if (m.sender_type === 'ai') {
+             senderHtml = `<span class="msg-sender" style="color: #e53935; font-weight: bold; display:block; margin-bottom:2px; font-size:0.8rem;">Gemma AI</span>`;
         }
 
         return `
-        <div class="message ${isUser ? 'user' : 'ai'}">
+        <div class="message ${isMe ? 'user' : 'ai'}">
             ${senderHtml}
-            <div class="msg-content">${m.content}</div>
+            <div class="msg-content">${escapeHtml(m.content)}</div>
             <div class="msg-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
         </div>
     `}).join('');
@@ -266,17 +272,24 @@ async function sendMessage() {
     const inp = document.getElementById('message-input');
     const txt = inp.value.trim();
     if (!txt || !state.currentChat) return;
-    
-    // Отобразить сразу
+
     const c = document.getElementById('messages-container');
-    
-    // Определяем имя отправителя для мгновенного отображения
+
+    // 1. Мгновенное отображение СВОЕГО сообщения с именем (для группы)
     let senderHtml = '';
     if (state.currentChatType === 'group') {
+        // Показываем свое имя сразу
         senderHtml = `<span class="msg-sender" style="color: #3390ec; font-weight: bold;">${state.currentUser.login}</span>`;
     }
+
+    // Рисуем сообщение пользователя
+    c.innerHTML += `
+        <div class="message user">
+            ${senderHtml}
+            <div class="msg-content">${escapeHtml(txt)}</div>
+            <div class="msg-time">...</div>
+        </div>`;
     
-    c.innerHTML += `<div class="message user">${senderHtml}<div class="msg-content">${txt}</div><div class="msg-time">...</div></div>`;
     inp.value = '';
     c.scrollTop = c.scrollHeight;
 
@@ -286,37 +299,44 @@ async function sendMessage() {
             personal_chat_id: state.currentChatType === 'personal' ? state.currentChat.id : null,
             group_id: state.currentChatType === 'group' ? state.currentChat.id : null
         });
+
+        // 2. Если пришел ответ от сервера (подтверждение или сообщение ИИ)
+        // Для группового чата лучше просто обновить последнее сообщение или перерисовать, 
+        // но так как сервер возвращает то же самое, мы можем просто обновить время.
         
-        // Обновляем последнее сообщение с правильными данными из ответа
-        if (res.user_message) {
-            // Для группового чата перерисовываем все сообщения чтобы показать корректные имена
-            if (state.currentChatType === 'group') {
-                // Добавляем sender_name к user_message и перерисовываем
-                const updatedUserMessage = {
-                    ...res.user_message,
-                    sender_name: state.currentUser.login
-                };
-                // Получаем текущие сообщения и добавляем новое
-                const currentMsgs = Array.from(document.querySelectorAll('#messages-container .message')).map(el => ({
-                    content: el.querySelector('.msg-content')?.textContent || '',
-                    created_at: new Date().toISOString()
-                }));
-                // Просто перерисуем с добавлением имени отправителя
-                renderMessages([...currentMsgs.slice(0, -1), updatedUserMessage]);
-                if (res.ai_message) {
-                    const aiMsg = {...res.ai_message, sender_name: 'Gemma AI'};
-                    renderMessages([...currentMsgs.slice(0, -1), updatedUserMessage, aiMsg]);
-                }
-                return;
-            }
-        }
-        
+        // Если есть ответ ИИ - рисуем его
         if (res.ai_message) {
             const aiSenderHtml = `<span class="msg-sender" style="color: #e53935; font-weight: bold;">Gemma AI</span>`;
-            c.innerHTML += `<div class="message ai">${aiSenderHtml}<div class="msg-content">${res.ai_message.content}</div><div class="msg-time">${new Date().toLocaleTimeString()}</div></div>`;
+            c.innerHTML += `
+                <div class="message ai">
+                    ${aiSenderHtml}
+                    <div class="msg-content">${escapeHtml(res.ai_message.content)}</div>
+                    <div class="msg-time">${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+                </div>`;
+            c.scrollTop = c.scrollHeight;
+        } else {
+            // Если ИИ молчит (выключен), просто обновим время у последнего сообщения
+            const lastMsg = c.lastElementChild;
+            if (lastMsg) {
+                lastMsg.querySelector('.msg-time').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            }
         }
-        c.scrollTop = c.scrollHeight;
-    } catch(e) { alert(e.message); }
+
+    } catch(e) { 
+        alert('Ошибка отправки: ' + e.message); 
+        // В случае ошибки можно удалить последнее сообщение из DOM, но пока оставим так
+    }
+}
+
+// Вспомогательная функция для безопасности (защита от XSS)
+function escapeHtml(text) {
+    if (!text) return '';
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 function switchMode(mode) {

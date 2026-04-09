@@ -1,27 +1,84 @@
-[INFO] 2026-04-09 16:27:15,778 - db - Initializing database tables
-[INFO] 2026-04-09 16:27:15,812 - db - Database initialization completed
-[INFO] 2026-04-09 16:27:15,843 - app - Starting Gemma-Hub Server...
+[INFO] 2026-04-09 17:53:47,551 - db - Initializing database tables
+[INFO] 2026-04-09 17:53:47,660 - db - Database initialization completed
+[INFO] 2026-04-09 17:53:47,710 - app - Starting Gemma-Hub Server...
  * Serving Flask app 'app'
  * Debug mode: on
-[INFO] 2026-04-09 16:27:15,864 - werkzeug - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+[INFO] 2026-04-09 17:53:47,779 - werkzeug - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
  * Running on all addresses (0.0.0.0)
  * Running on http://127.0.0.1:5002
  * Running on http://192.168.0.30:5002
-[INFO] 2026-04-09 16:27:15,870 - werkzeug - [33mPress CTRL+C to quit[0m
-[INFO] 2026-04-09 16:27:15,871 - werkzeug -  * Restarting with stat
-[INFO] 2026-04-09 16:27:17,875 - db - Initializing database tables
-[INFO] 2026-04-09 16:27:17,963 - db - Database initialization completed
-[INFO] 2026-04-09 16:27:17,994 - app - Starting Gemma-Hub Server...
-[WARNING] 2026-04-09 16:27:18,020 - werkzeug -  * Debugger is active!
-[INFO] 2026-04-09 16:27:18,024 - werkzeug -  * Debugger PIN: 145-933-856
-[INFO] 2026-04-09 16:27:30,409 - werkzeug - 192.168.0.166 - - [09/Apr/2026 16:27:30] "GET / HTTP/1.1" 200 -
-[INFO] 2026-04-09 16:27:30,456 - werkzeug - 192.168.0.166 - - [09/Apr/2026 16:27:30] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
-[INFO] 2026-04-09 16:27:30,458 - werkzeug - 192.168.0.166 - - [09/Apr/2026 16:27:30] "[36mGET /static/js/app.js HTTP/1.1[0m" 304 -
-[INFO] 2026-04-09 16:27:30,584 - werkzeug - 192.168.0.166 - - [09/Apr/2026 16:27:30] "GET /api/auth/me HTTP/1.1" 200 -
-[INFO] 2026-04-09 16:27:30,632 - werkzeug - 192.168.0.166 - - [09/Apr/2026 16:27:30] "GET /api/client/chats HTTP/1.1" 200 -
-[INFO] 2026-04-09 16:27:30,685 - werkzeug - 192.168.0.166 - - [09/Apr/2026 16:27:30] "GET /api/users/list HTTP/1.1" 200 -
-/root/Gemma2/app.py:775: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+[INFO] 2026-04-09 17:53:47,794 - werkzeug - [33mPress CTRL+C to quit[0m
+[INFO] 2026-04-09 17:53:47,795 - werkzeug -  * Restarting with stat
+[INFO] 2026-04-09 17:53:50,791 - db - Initializing database tables
+[INFO] 2026-04-09 17:53:50,858 - db - Database initialization completed
+[INFO] 2026-04-09 17:53:50,887 - app - Starting Gemma-Hub Server...
+[WARNING] 2026-04-09 17:53:50,918 - werkzeug -  * Debugger is active!
+[INFO] 2026-04-09 17:53:50,930 - werkzeug -  * Debugger PIN: 145-933-856
+[INFO] 2026-04-09 17:54:40,908 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:40] "GET / HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:40,970 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:40] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+[INFO] 2026-04-09 17:54:40,972 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:40] "GET /static/js/app.js HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:41,119 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:41] "GET /api/auth/me HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:41,178 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:41] "GET /api/client/chats HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:41,223 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:41] "GET /api/users/list HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:41,245 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:41] "GET /api/invitations HTTP/1.1" 200 -
+/root/Gemma2/app.py:786: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
   group = db.query(ChatGroup).get(group_id)
-[INFO] 2026-04-09 16:27:32,349 - werkzeug - 192.168.0.166 - - [09/Apr/2026 16:27:32] "GET /api/group/5 HTTP/1.1" 200 -
-[INFO] 2026-04-09 16:27:56,837 - werkzeug - 192.168.0.166 - - [09/Apr/2026 16:27:56] "GET /api/group/5 HTTP/1.1" 200 -
-[INFO] 2026-04-09 16:28:52,028 - werkzeug - 192.168.0.166 - - [09/Apr/2026 16:28:52] "GET /api/group/5 HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:43,299 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:43] "GET /api/group/1 HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:43,343 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:43] "GET /api/invitations HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:47,888 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:47] "GET / HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:47,910 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:47] "GET /static/css/style.css HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:47,911 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:47] "GET /static/js/app.js HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:47,942 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:47] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+[INFO] 2026-04-09 17:54:47,947 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:47] "GET /api/auth/me HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:47,992 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:47] "GET /api/client/chats HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:48,036 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:48] "GET /api/users/list HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:48,053 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:48] "GET /api/invitations HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:50,039 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:50] "GET /api/group/5 HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:50,068 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:50] "GET /api/invitations HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:54,659 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:54] "GET /api/group/1 HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:54:54,693 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:54:54] "GET /api/invitations HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:55:21,133 - app - POST /api/chat/send from 192.168.0.166 (client_id=25)
+[INFO] 2026-04-09 17:55:21,141 - db - Adding message to chat (group_id=1) by client (sender_id=25)
+[INFO] 2026-04-09 17:55:21,162 - db - Message added to chat_id=1 by client_id=25
+[INFO] 2026-04-09 17:55:21,172 - ollama - Chat request to gemma4:e4b (message length: 5403 chars)
+[INFO] 2026-04-09 17:55:59,028 - ollama - Chat response received (726 chars)
+[INFO] 2026-04-09 17:55:59,030 - db - Adding message to chat (group_id=1) by ai (sender_id=None)
+[INFO] 2026-04-09 17:55:59,070 - db - Message added to chat_id=1 by client_id=AI
+[INFO] 2026-04-09 17:55:59,070 - app - Message sent to group 1, status=200
+[INFO] 2026-04-09 17:55:59,085 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:55:59] "POST /api/chat/send HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:48,001 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:48] "[31m[1mPOST /api/group/invite HTTP/1.1[0m" 403 -
+[INFO] 2026-04-09 17:56:55,739 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:55] "GET / HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:55,764 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:55] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+[INFO] 2026-04-09 17:56:55,767 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:55] "[36mGET /static/js/app.js HTTP/1.1[0m" 304 -
+[INFO] 2026-04-09 17:56:55,865 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:55] "GET /api/auth/me HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:55,916 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:55] "GET /api/client/chats HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:55,954 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:55] "GET /api/invitations HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:55,955 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:55] "GET /api/users/list HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:57,366 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:57] "GET / HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:57,385 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:57] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+[INFO] 2026-04-09 17:56:57,386 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:57] "[36mGET /static/js/app.js HTTP/1.1[0m" 304 -
+[INFO] 2026-04-09 17:56:57,410 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:57] "GET /api/auth/me HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:57,460 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:57] "GET /api/client/chats HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:57,504 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:57] "GET /api/users/list HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:57,505 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:57] "GET /api/invitations HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:58,183 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:58] "GET / HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:58,200 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:58] "[36mGET /static/js/app.js HTTP/1.1[0m" 304 -
+[INFO] 2026-04-09 17:56:58,201 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:58] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+[INFO] 2026-04-09 17:56:58,235 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:58] "GET /api/auth/me HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:58,292 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:58] "GET /api/client/chats HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:58,350 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:58] "GET /api/users/list HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:56:58,354 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:56:58] "GET /api/invitations HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:57:01,604 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:57:01] "GET /api/group/5 HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:57:01,635 - werkzeug - 192.168.0.166 - - [09/Apr/2026 17:57:01] "GET /api/invitations HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:57:11,548 - werkzeug - 192.168.0.1 - - [09/Apr/2026 17:57:11] "GET / HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:57:11,789 - werkzeug - 192.168.0.1 - - [09/Apr/2026 17:57:11] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+[INFO] 2026-04-09 17:57:11,819 - werkzeug - 192.168.0.1 - - [09/Apr/2026 17:57:11] "GET /static/js/app.js HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:57:11,900 - werkzeug - 192.168.0.1 - - [09/Apr/2026 17:57:11] "GET /api/auth/me HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:57:11,955 - werkzeug - 192.168.0.1 - - [09/Apr/2026 17:57:11] "GET /api/client/chats HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:57:12,017 - werkzeug - 192.168.0.1 - - [09/Apr/2026 17:57:12] "GET /api/invitations HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:57:12,018 - werkzeug - 192.168.0.1 - - [09/Apr/2026 17:57:12] "GET /api/users/list HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:57:17,011 - werkzeug - 192.168.0.1 - - [09/Apr/2026 17:57:17] "GET /api/group/1 HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:57:17,440 - werkzeug - 192.168.0.1 - - [09/Apr/2026 17:57:17] "GET /api/invitations HTTP/1.1" 200 -
+[INFO] 2026-04-09 17:57:35,585 - db - Client 24 invited to group 1
+[INFO] 2026-04-09 17:57:35,587 - app - Client 24 invited to group 1 by 22
+[INFO] 2026-04-09 17:57:35,591 - werkzeug - 192.168.0.1 - - [09/Apr/2026 17:57:35] "POST /api/group/invite HTTP/1.1" 200 -
