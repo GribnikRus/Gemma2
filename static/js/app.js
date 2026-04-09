@@ -165,6 +165,25 @@ function initAuth() {
             }
         });
     }
+    
+    // Гамбургер меню для мобильных
+    const hamburgerMenu = document.getElementById('hamburger-menu');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
+    
+    if (hamburgerMenu && sidebar) {
+        hamburgerMenu.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+            if (sidebarOverlay) sidebarOverlay.classList.toggle('active');
+        });
+    }
+    
+    if (sidebarOverlay && sidebar) {
+        sidebarOverlay.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            sidebarOverlay.classList.remove('active');
+        });
+    }
 }
 
 function showAuth() {
