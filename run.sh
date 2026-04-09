@@ -4,81 +4,120 @@
 # Скрипт запуска gemma-hub
 # ==========================================
 
-set -e  # Остановить скрипт при ошибке
+set -e  # Остановить скрипт при критической ошибке
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Проверка наличия виртуального окружения
+# Цвета для вывода
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo -e "${GREEN}============================================${NC}"
+echo -e "${GREEN}🚀 Запуск gemma-hub...${NC}"
+echo -e "${GREEN}============================================${NC}"
+
+# 1. Проверка виртуального окружения
 if [ ! -d "venv" ]; then
-    echo "❌ Виртуальное окружение не найдено!"
-    echo "Сначала выполните: ./setup.sh"
+    echo -e "${RED}❌ Виртуальное окружение 'venv' не найдено!${NC}"
+    echo "Сначала создайте его: python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
     exit 1
 fi
 
-# Активация виртуального окружения
+# 2. Активация окружения
 echo "🔌 Активация виртуального окружения..."
 source venv/bin/activate
 
-# Проверка переменных окружения (опционально)
+# 3. Загрузка переменных из .env (если есть)
 if [ -f ".env" ]; then
     echo "📄 Загрузка переменных из .env..."
-    export $(cat .env | grep -v '^#' | xargs)
+    set -a
+    source .env
+    set +a
 fi
 
-echo ""
-echo "============================================"
-echo "🚀 Запуск gemma-hub..."
-echo "============================================"
-echo ""
-echo "📍 Рабочая директория: $SCRIPT_DIR"
-echo "🌐 Flask будет доступен на: http://localhost:5002"
-echo ""
+# 4. Очистка старых процессов и файлов
+echo "🧹 Очистка старых процессов..."
 
-# Функция для остановки процессов при прерывании
+# Убиваем всё, что висит на порту 5002
+if lsof -Pi :5002 -sTCP:LISTEN -t >/dev/null ; then
+    echo -e "${YELLOW}⚠️ Порт 5002 занят. Освобождение...${NC}"
+    fuser -k 5002/tcp 2>/dev/null || true
+    sleep 1
+fi
+
+# Удаляем старые PID файлы
+rm -f celery.pid flask.pid
+
+# Убиваем возможные зависшие процессы celery и python, принадлежащие этому проекту
+pkill -f "celery.*gemma" 2>/dev/null || true
+# pkill -f "python.*app.py" 2>/dev/null || true # Лучше не убивать все python, а полагаться на порт
+
+# 5. Функция корректной остановки
 cleanup() {
     echo ""
-    echo "⏹️  Остановка сервисов..."
-    if [ -n "$FLASK_PID" ] && kill -0 $FLASK_PID 2>/dev/null; then
-        kill $FLASK_PID
+    echo -e "${YELLOW}⏹️  Получен сигнал остановки. Завершение работы...${NC}"
+    
+    if [ -n "$FLASK_PID" ]; then
+        echo "   Остановка Flask (PID: $FLASK_PID)..."
+        kill $FLASK_PID 2>/dev/null || true
     fi
-    if [ -n "$CELERY_PID" ] && kill -0 $CELERY_PID 2>/dev/null; then
-        kill $CELERY_PID
+    
+    if [ -n "$CELERY_PID" ]; then
+        echo "   Остановка Celery (PID: $CELERY_PID)..."
+        kill $CELERY_PID 2>/dev/null || true
+        # Ждем немного и убиваем жестко, если не закрылся
+        sleep 2
+        kill -9 $CELERY_PID 2>/dev/null || true
     fi
-    # Остановка всех процессов celery дочерних процессов
+    
+    # Чистим дочерние процессы
     pkill -P $$ 2>/dev/null || true
-    echo "✅ Все сервисы остановлены"
+    
+    rm -f celery.pid flask.pid
+    echo -e "${GREEN}✅ Все сервисы остановлены.${NC}"
     exit 0
 }
 
-# Перехват сигналов для корректной остановки
+# Перехват сигналов Ctrl+C и TERM
 trap cleanup SIGINT SIGTERM
 
-# Запуск Celery worker в фоне
+# 6. Запуск Celery Worker
 echo "📦 Запуск Celery worker..."
+# --detach запускает в фоне, --pidfile сохраняет ID процесса
 celery -A celery_tasks.tasks worker --loglevel=info --detach --pidfile=celery.pid
-CELERY_PID=$!
-echo "   ✅ Celery запущен (PID: $CELERY_PID)"
 
-# Небольшая пауза для инициализации Celery
+if [ -f celery.pid ]; then
+    CELERY_PID=$(cat celery.pid)
+    echo -e "   ${GREEN}✅ Celery запущен (PID: $CELERY_PID)${NC}"
+else
+    echo -e "   ${RED}❌ Не удалось запустить Celery${NC}"
+    cleanup
+fi
+
+# Даем Celery пару секунд на инициализацию подключения к Redis/DB
 sleep 2
 
-# Запуск Flask приложения
-echo "🌐 Запуск Flask приложения..."
-python app.py &
+# 7. Запуск Flask
+echo "🌐 Запуск Flask приложения (Port 5002)..."
+python app.py > flask.log 2>&1 &
 FLASK_PID=$!
-echo "   ✅ Flask запущен (PID: $FLASK_PID)"
+echo $FLASK_PID > flask.pid
+echo -e "   ${GREEN}✅ Flask запущен (PID: $FLASK_PID)${NC}"
 
 echo ""
-echo "============================================"
-echo "✅ Сервис запущен!"
+echo -e "${GREEN}============================================${NC}"
+echo -e "${GREEN}✅ Сервис успешно запущен!${NC}"
+echo -e "${GREEN}============================================${NC}"
 echo ""
-echo "Flask:  http://localhost:5002"
-echo "Celery: активен (фоновый процесс)"
+echo "🌐 Web Interface: http://localhost:5002"
+echo "📝 Flask Logs:     tail -f flask.log"
+echo "🔄 Celery Status:  celery -A celery_tasks.tasks inspect ping"
 echo ""
-echo "Нажмите Ctrl+C для остановки всех сервисов"
-echo "============================================"
+echo -e "${YELLOW}Нажмите Ctrl+C для остановки всех сервисов${NC}"
 echo ""
 
-# Ожидание завершения работы Flask
+# Ждем завершения Flask процесса
 wait $FLASK_PID
