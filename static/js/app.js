@@ -1,6 +1,7 @@
 /**
  * Gemma Hub - Frontend JavaScript
  * Обработка авторизации, чатов и всех режимов работы
+ * Расширенный функционал: мультимодальность, аудио-лаборатория, ИИ-наблюдатель
  */
 
 // ==================== ГЛОБАЛЬНОЕ СОСТОЯНИЕ ====================
@@ -10,7 +11,18 @@ const state = {
     currentChatType: 'personal', // 'personal' или 'group'
     currentMode: 'chat', // 'chat', 'image', 'audio', 'observer'
     chats: [],
-    groups: []
+    groups: [],
+    selectedImages: [], // Для хранения выбранных изображений
+    audioProcessing: false
+};
+
+// Роли наблюдателя с системными промтами
+const OBSERVER_ROLES = {
+    'Критик': 'Ты критический аналитик. Твоя задача — находить логические ошибки, противоречия и слабые аргументы в диалоге. Будь объективен, но строг.',
+    'Саммаризатор': 'Ты эксперт по саммаризации. Твоя задача — создавать краткие, информативные резюме диалога, выделяя ключевые моменты и решения.',
+    'Эксперт по фактам': 'Ты эксперт по проверке фактов. Твоя задача — анализировать утверждения участников на достоверность, указывать на возможные неточности и предоставлять корректную информацию.',
+    'Психолог': 'Ты психолог-аналитик. Твоя задача — оценивать эмоциональный тон общения, выявлять паттерны поведения, конфликты и давать рекомендации по улучшению коммуникации.',
+    'Custom': '' // Пользовательский промт
 };
 
 // ==================== API ХЕЛПЕРЫ ====================
@@ -43,9 +55,18 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
     return result;
 }
 
-async function apiUpload(endpoint, file, additionalData = {}) {
+async function apiUpload(endpoint, files, additionalData = {}) {
     const formData = new FormData();
-    formData.append('file', file);
+    
+    // Поддержка множественных файлов
+    if (files instanceof FileList || Array.isArray(files)) {
+        const fileArray = files instanceof FileList ? Array.from(files) : files;
+        fileArray.forEach((file, index) => {
+            formData.append('files', file);
+        });
+    } else {
+        formData.append('file', files);
+    }
     
     for (const [key, value] of Object.entries(additionalData)) {
         formData.append(key, value);
@@ -397,6 +418,217 @@ function setMode(mode) {
         observerBtn.style.display = state.currentChatType === 'group' ? 'inline-block' : 'none';
     }
 }
+// ==================== РЕЖИМЫ РАБОТЫ ====================
+function setMode(mode) {
+    state.currentMode = mode;
+
+    // Обновляем кнопки режимов
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+
+    // Показываем нужный контейнер ввода
+    document.querySelectorAll('.input-container').forEach(container => {
+        container.classList.add('hidden');
+    });
+
+    const activeContainer = document.getElementById(`${mode}-input-container`);
+    if (activeContainer) {
+        activeContainer.classList.remove('hidden');
+    }
+
+    // Показываем/скрываем кнопку наблюдателя для личных чатов
+    const observerBtn = document.getElementById('observer-mode-btn');
+    if (observerBtn) {
+        observerBtn.style.display = state.currentChatType === 'group' ? 'inline-block' : 'none';
+    }
+    
+    // Обработка переключения на кастомный промт в режиме наблюдателя
+    setupObserverCustomPromptHandlers();
+}
+
+// Обработчики для кастомного промта наблюдателя
+function setupObserverCustomPromptHandlers() {
+    const roleSelect = document.getElementById('observer-role');
+    const customInput = document.getElementById('observer-custom-prompt');
+    const roleSelectQuick = document.getElementById('observer-role-quick');
+    const customInputQuick = document.getElementById('observer-custom-prompt-quick');
+    
+    if (roleSelect && customInput) {
+        roleSelect.addEventListener('change', () => {
+            if (roleSelect.value === 'Custom') {
+                customInput.classList.remove('hidden');
+            } else {
+                customInput.classList.add('hidden');
+            }
+        });
+    }
+    
+    if (roleSelectQuick && customInputQuick) {
+        roleSelectQuick.addEventListener('change', () => {
+            if (roleSelectQuick.value === 'Custom') {
+                customInputQuick.classList.remove('hidden');
+            } else {
+                customInputQuick.classList.add('hidden');
+            }
+        });
+    }
+}
+
+// ==================== МУЛЬТИМОДАЛЬНОСТЬ: РАБОТА С НЕСКОЛЬКИМИ ИЗОБРАЖЕНИЯМИ ====================
+
+// Обработка выбора файлов изображений
+function handleImageFileSelect(event) {
+    const input = event.target;
+    const files = Array.from(input.files);
+    const previewContainer = document.getElementById('image-preview-container');
+    
+    if (!previewContainer) return;
+    
+    previewContainer.innerHTML = '';
+    state.selectedImages = [];
+    
+    files.forEach((file, index) => {
+        if (!file.type.startsWith('image/')) return;
+        
+        state.selectedImages.push(file);
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const preview = document.createElement('div');
+            preview.className = 'image-preview';
+            preview.innerHTML = `
+                <img src="${e.target.result}" alt="Preview">
+                <button type="button" class="remove-btn" data-index="${index}">×</button>
+            `;
+            previewContainer.appendChild(preview);
+            
+            // Обработчик удаления
+            preview.querySelector('.remove-btn').addEventListener('click', () => {
+                state.selectedImages.splice(index, 1);
+                preview.remove();
+            });
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+// Загрузка и анализ нескольких изображений
+async function uploadMultipleImages() {
+    const promptInput = document.getElementById('image-prompt-input');
+    const prompt = promptInput ? promptInput.value.trim() : 'Опишите эти изображения подробно.';
+    
+    if (state.selectedImages.length === 0 || !state.currentChat) {
+        alert('Выберите хотя бы одно изображение');
+        return;
+    }
+    
+    try {
+        showMessage('client', `📷 Загрузка ${state.selectedImages.length} изображения(ий)...`);
+        
+        // Отправляем файлы на сервер
+        const result = await apiUpload('/api/chat/vision', state.selectedImages, {
+            prompt: prompt,
+            chat_type: state.currentChatType,
+            chat_id: state.currentChat.id
+        });
+        
+        // Показываем результат
+        if (result.analysis) {
+            showMessage('ai', `🖼️ Анализ ${state.selectedImages.length} изображения(ий):\n\n${result.analysis}`);
+        } else {
+            showMessage('ai', `✅ Анализ запущен. ID задачи: ${result.task_id}`);
+        }
+        
+        // Очищаем
+        state.selectedImages = [];
+        const input = document.getElementById('image-file');
+        if (input) input.value = '';
+        const previewContainer = document.getElementById('image-preview-container');
+        if (previewContainer) previewContainer.innerHTML = '';
+        if (promptInput) promptInput.value = '';
+        
+    } catch (error) {
+        console.error('Ошибка загрузки изображений:', error);
+        showMessage('ai', `Ошибка: ${error.message}`);
+    }
+}
+
+// ==================== АУДИО-ЛАБОРАТОРИЯ ====================
+
+// Обработка выбора аудиофайла
+function handleAudioFileSelect(event) {
+    const input = event.target;
+    const fileInfo = document.getElementById('audio-file-info');
+    
+    if (!fileInfo || !input.files[0]) return;
+    
+    const file = input.files[0];
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+    fileInfo.textContent = `🎵 ${file.name} (${sizeMB} MB)`;
+}
+
+// Транскрибация и анализ аудио
+async function transcribeAndAnalyzeAudio() {
+    const input = document.getElementById('audio-file');
+    const file = input ? input.files[0] : null;
+    
+    if (!file || !state.currentChat) {
+        alert('Выберите аудиофайл');
+        return;
+    }
+    
+    if (state.audioProcessing) {
+        alert('Обработка уже идет...');
+        return;
+    }
+    
+    try {
+        state.audioProcessing = true;
+        showMessage('client', `🎤 Загрузка аудио для обработки: ${file.name}`);
+        
+        // Отправляем на сервер
+        const result = await apiUpload('/api/audio/transcribe-analyze', file, {
+            chat_id: state.currentChat.id
+        });
+        
+        // Показываем результаты
+        const resultsContainer = document.getElementById('audio-results-container');
+        const transcriptionEl = document.getElementById('audio-transcription');
+        const analysisEl = document.getElementById('audio-analysis');
+        
+        if (resultsContainer && transcriptionEl && analysisEl) {
+            resultsContainer.classList.remove('hidden');
+            transcriptionEl.textContent = result.transcription || 'Транскрибация недоступна';
+            analysisEl.textContent = result.analysis || 'Анализ недоступен';
+            
+            showMessage('ai', '✅ Аудио обработано. Результаты ниже.');
+        }
+        
+        // Очищаем input
+        if (input) input.value = '';
+        const fileInfo = document.getElementById('audio-file-info');
+        if (fileInfo) fileInfo.textContent = '';
+        
+    } catch (error) {
+        console.error('Ошибка обработки аудио:', error);
+        showMessage('ai', `Ошибка: ${error.message}`);
+    } finally {
+        state.audioProcessing = false;
+    }
+}
+
+// ==================== ЗАГРУЗКА ИЗОБРАЖЕНИЙ (старая функция, оставлена для совместимости) ====================
+async function uploadImage() {
+    // Вызываем новую функцию для множественных изображений
+    uploadMultipleImages();
+}
+
+// ==================== ЗАГРУЗКА АУДИО (старая функция, обновлена) ====================
+async function uploadAudio() {
+    // Вызываем новую функцию транскрибации с анализом
+    transcribeAndAnalyzeAudio();
+}
 
 // ==================== ЗАГРУЗКА ИЗОБРАЖЕНИЙ ====================
 async function uploadImage() {
@@ -618,24 +850,43 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     
+
     // Загрузка изображений
     const uploadImageBtn = document.getElementById('upload-image-btn');
     if (uploadImageBtn) {
         uploadImageBtn.addEventListener('click', uploadImage);
     }
     
+    // Обработчик выбора файлов изображений
+    const imageFileInput = document.getElementById('image-file');
+    if (imageFileInput) {
+        imageFileInput.addEventListener('change', handleImageFileSelect);
+    }
+
     // Загрузка аудио
     const uploadAudioBtn = document.getElementById('upload-audio-btn');
     if (uploadAudioBtn) {
         uploadAudioBtn.addEventListener('click', uploadAudio);
     }
     
+    // Обработчик выбора аудиофайла
+    const audioFileInput = document.getElementById('audio-file');
+    if (audioFileInput) {
+        audioFileInput.addEventListener('change', handleAudioFileSelect);
+    }
+
     // Анализ наблюдателем
     const analyzeBtn = document.getElementById('analyze-btn');
     if (analyzeBtn) {
         analyzeBtn.addEventListener('click', analyzeWithObserver);
     }
     
+    // Быстрый анализ из правой панели
+    const analyzeQuickBtn = document.getElementById('analyze-quick-btn');
+    if (analyzeQuickBtn) {
+        analyzeQuickBtn.addEventListener('click', analyzeWithObserverQuick);
+    }
+
     // Начальный режим
     setMode('chat');
 });
