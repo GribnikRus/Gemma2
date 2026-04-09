@@ -6,3 +6,4 @@ uploads/
 celery.pid
 flask.pid
 .DS_Store
+.venv/
