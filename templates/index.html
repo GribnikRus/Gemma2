@@ -111,32 +111,72 @@
                     <button id="send-btn" class="btn btn-primary">➤</button>
                 </div>
                 
-                <!-- Режим анализа изображений -->
+                <!-- Режим анализа изображений (мультимодальный) -->
                 <div id="image-input-container" class="input-container hidden">
-                    <input type="file" id="image-file" accept="image/*">
+                    <div class="file-upload-wrapper">
+                        <input type="file" id="image-file" accept="image/*" multiple>
+                        <label for="image-file" class="file-upload-label">📁 Выбрать изображения</label>
+                    </div>
+                    <div id="image-preview-container" class="preview-container"></div>
+                    <textarea id="image-prompt-input" placeholder="Опишите что нужно сделать с изображениями..." rows="2"></textarea>
                     <button id="upload-image-btn" class="btn btn-primary">Анализировать</button>
                 </div>
                 
-                <!-- Режим аудио -->
+                <!-- Режим аудио (Аудио-лаборатория) -->
                 <div id="audio-input-container" class="input-container hidden">
-                    <input type="file" id="audio-file" accept="audio/*">
-                    <button id="upload-audio-btn" class="btn btn-primary">Транскрибировать</button>
+                    <div class="audio-lab-panel">
+                        <h4>🎙️ Аудио-лаборатория</h4>
+                        <p class="hint">Загрузите аудиофайл для транскрибации и анализа содержания</p>
+                        <div class="file-upload-wrapper">
+                            <input type="file" id="audio-file" accept="audio/*">
+                            <label for="audio-file" class="file-upload-label">🎵 Выбрать аудиофайл</label>
+                        </div>
+                        <div id="audio-file-info" class="file-info"></div>
+                        <button id="upload-audio-btn" class="btn btn-primary">Транскрибировать и Анализировать</button>
+                    </div>
+                    <!-- Результаты аудио обработки -->
+                    <div id="audio-results-container" class="results-container hidden">
+                        <div class="result-section">
+                            <h5>📝 Текст речи (транскрибация)</h5>
+                            <div id="audio-transcription" class="result-text"></div>
+                        </div>
+                        <div class="result-section">
+                            <h5>🧠 Анализ содержания</h5>
+                            <div id="audio-analysis" class="result-text"></div>
+                        </div>
+                    </div>
                 </div>
                 
                 <!-- Режим наблюдателя -->
                 <div id="observer-input-container" class="input-container hidden">
-                    <select id="observer-role">
-                        <option value="Критик">Критик</option>
-                        <option value="Саммаризатор">Саммаризатор</option>
-                        <option value="Поиск ошибок">Поиск ошибок</option>
-                        <option value="Аналитик">Аналитик</option>
-                        <option value="Советник">Советник</option>
-                    </select>
-                    <select id="observer-type">
-                        <option value="quick">Быстрый анализ (10 сообщений)</option>
-                        <option value="full">Полный отчет (все сообщения)</option>
-                    </select>
-                    <button id="analyze-btn" class="btn btn-primary">Анализировать</button>
+                    <div class="observer-panel">
+                        <div class="observer-controls">
+                            <label>Роль наблюдателя:</label>
+                            <select id="observer-role">
+                                <option value="Критик">🔍 Критик (ищет логические ошибки)</option>
+                                <option value="Саммаризатор">📋 Саммаризатор (делает краткий итог)</option>
+                                <option value="Эксперт по фактам">✅ Эксперт по фактам (проверяет утверждения)</option>
+                                <option value="Психолог">🧠 Психолог (анализирует тон общения)</option>
+                                <option value="Custom">✏️ Custom (свой промт)</option>
+                            </select>
+                            <input type="text" id="observer-custom-prompt" class="hidden" placeholder="Введите свою роль/промт...">
+                        </div>
+                        <div class="observer-controls">
+                            <label>Тип анализа:</label>
+                            <select id="observer-type">
+                                <option value="quick">⚡ Быстрый анализ (последние 10 сообщений)</option>
+                                <option value="full">📊 Полный отчет (все сообщения)</option>
+                            </select>
+                            <button id="analyze-btn" class="btn btn-primary">🔍 Анализировать</button>
+                        </div>
+                    </div>
+                    <!-- Результаты анализа наблюдателя -->
+                    <div id="observer-results-container" class="results-container hidden">
+                        <div class="result-section">
+                            <h5>👁️ Результат анализа наблюдателя</h5>
+                            <div id="observer-analysis-result" class="result-text"></div>
+                        </div>
+                    </div>
                 </div>
             </footer>
         </main>
@@ -150,9 +190,22 @@
                 </div>
             </div>
             
-            <div class="panel-section" id="observer-settings">
-                <h3>Настройки наблюдателя</h3>
-                <p class="hint">Выберите роль ИИ для анализа чата</p>
+            <!-- Панель Наблюдателя (в групповом режиме) -->
+            <div class="panel-section observer-panel-fixed" id="observer-panel-fixed">
+                <h3>👁️ Панель Наблюдателя</h3>
+                <p class="hint">Быстрый доступ к анализу диалога</p>
+                <div class="observer-quick-controls">
+                    <select id="observer-role-quick">
+                        <option value="Критик">Критик</option>
+                        <option value="Саммаризатор">Саммаризатор</option>
+                        <option value="Эксперт по фактам">Эксперт по фактам</option>
+                        <option value="Психолог">Психолог</option>
+                        <option value="Custom">Custom</option>
+                    </select>
+                    <input type="text" id="observer-custom-prompt-quick" class="hidden" placeholder="Ваш промт...">
+                    <button id="analyze-quick-btn" class="btn btn-sm btn-primary">Анализ</button>
+                </div>
+                <div id="observer-quick-result" class="observer-quick-result hidden"></div>
             </div>
         </aside>
     </div>
