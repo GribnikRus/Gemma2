@@ -4,8 +4,8 @@ Flask приложение gemma-hub.
 """
 import os
 import base64
+import hashlib
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
-from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from functools import wraps
 from datetime import datetime
@@ -13,17 +13,16 @@ from datetime import datetime
 from config import SECRET_KEY, UPLOAD_FOLDER, MAX_CONTENT_LENGTH
 from db import (
     init_db, get_db, SessionLocal,
-    get_client_by_username, get_client_by_id,
-    create_personal_chat, get_personal_chat, get_client_personal_chats,
+    get_client_by_login, get_client_by_id,
+    create_personal_chat, get_personal_chat as get_personal_chat_from_db, get_client_personal_chats,
     create_group, invite_client_to_group, accept_group_invite,
     is_client_member_of_group, get_client_groups, get_group_history,
     get_personal_chat_history, add_message,
     create_task_history, update_task_history,
     create_observer_session, add_observer_analysis,
-    Client, ChatGroup, GroupMember
+    Client, ChatGroup, GroupMember, TaskHistory
 )
 from ollama_client import OllamaClient
-from celery_tasks.tasks import analyze_image_task, transcribe_audio_task, analyze_chat_observer_task
 
 # Инициализация Flask
 app = Flask(__name__)
@@ -40,6 +39,15 @@ init_db()
 # Клиент Ollama
 ollama = OllamaClient()
 
+# ==================== УТИЛИТЫ ПАРОЛЕЙ (SHA-256) ====================
+
+def hash_password_sha256(password: str) -> str:
+    """Хеширует пароль через SHA-256 (совместимо с VARCHAR(64) в БД)"""
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+def verify_password_sha256(password: str, hashed: str) -> bool:
+    """Проверяет пароль"""
+    return hash_password_sha256(password) == hashed
 
 # ==================== УТИЛИТЫ ====================
 
@@ -78,13 +86,13 @@ def index():
 def register():
     """Регистрация нового клиента"""
     data = request.get_json()
-    username = data.get('username', '').strip()
+    login = data.get('login', '').strip()
     password = data.get('password', '')
     
-    if not username or not password:
+    if not login or not password:
         return jsonify({'error': 'Логин и пароль обязательны'}), 400
     
-    if len(username) < 3:
+    if len(login) < 3:
         return jsonify({'error': 'Логин должен быть не менее 3 символов'}), 400
     
     if len(password) < 6:
@@ -93,14 +101,17 @@ def register():
     db = SessionLocal()
     try:
         # Проверяем существование
-        existing = get_client_by_username(db, username)
+        existing = get_client_by_login(db, login)
         if existing:
             return jsonify({'error': 'Пользователь уже существует'}), 409
         
+        # Хешируем пароль через SHA-256
+        pwd_hash = hash_password_sha256(password)
+
         # Создаем клиента
         new_client = Client(
-            username=username,
-            password_hash=generate_password_hash(password)
+            login=login,
+            password_hash=pwd_hash
         )
         db.add(new_client)
         db.commit()
@@ -109,8 +120,13 @@ def register():
         return jsonify({
             'message': 'Регистрация успешна',
             'client_id': new_client.id,
-            'username': new_client.username
+            'login': new_client.login
         }), 201
+    except Exception as e:
+        db.rollback()
+        if "unique constraint" in str(e).lower():
+            return jsonify({'error': 'Пользователь уже существует'}), 409
+        return jsonify({'error': str(e)}), 500
     finally:
         db.close()
 
@@ -119,27 +135,25 @@ def register():
 def login():
     """Вход в систему"""
     data = request.get_json()
-    username = data.get('username', '').strip()
+    login = data.get('login', '').strip()
     password = data.get('password', '')
     
     db = SessionLocal()
     try:
-        client = get_client_by_username(db, username)
+        client = get_client_by_login(db, login)
         
-        if not client or not check_password_hash(client.password_hash, password):
+        # Используем нашу SHA-256 проверку
+        if not client or not verify_password_sha256(password, client.password_hash):
             return jsonify({'error': 'Неверный логин или пароль'}), 401
-        
-        if not client.is_active:
-            return jsonify({'error': 'Аккаунт деактивирован'}), 403
         
         # Создаем сессию
         session['client_id'] = client.id
-        session['username'] = client.username
+        session['login'] = client.login
         
         return jsonify({
             'message': 'Вход успешен',
             'client_id': client.id,
-            'username': client.username
+            'login': client.login
         })
     finally:
         db.close()
@@ -162,7 +176,7 @@ def get_current_user():
     
     return jsonify({
         'client_id': client.id,
-        'username': client.username,
+        'login': client.login,
         'created_at': client.created_at.isoformat() if client.created_at else None
     })
 
@@ -194,7 +208,7 @@ def get_personal_chat(chat_id: int):
     """Получить личный чат с историей"""
     db = SessionLocal()
     try:
-        chat = get_personal_chat(db, chat_id, session['client_id'])
+        chat = get_personal_chat_from_db(db, chat_id, session['client_id'])
         if not chat:
             return jsonify({'error': 'Чат не найден'}), 404
         
@@ -210,7 +224,6 @@ def get_personal_chat(chat_id: int):
                 'id': m.id,
                 'content': m.content,
                 'sender_type': m.sender_type,
-                'message_type': m.message_type,
                 'created_at': m.created_at.isoformat()
             } for m in messages]
         })
@@ -235,7 +248,7 @@ def send_message():
         # Определяем тип чата
         if personal_chat_id:
             # Личный чат
-            chat = get_personal_chat(db, personal_chat_id, session['client_id'])
+            chat = get_personal_chat_from_db(db, personal_chat_id, session['client_id'])
             if not chat:
                 return jsonify({'error': 'Чат не найден'}), 404
             
@@ -278,7 +291,7 @@ def send_message():
         
         elif group_id:
             # Групповой чат
-            if not is_client_member_of_group(db, group_id, session['client_id']):
+            if not is_client_member_of_group(db, session['client_id'], group_id):
                 return jsonify({'error': 'Нет доступа к группе'}), 403
             
             # Добавляем сообщение пользователя
@@ -357,15 +370,19 @@ def upload_image():
             unique_filename
         )
         
-        # Запускаем фоновую задачу Celery
-        celery_task = analyze_image_task.delay(image_base64, "Опиши это изображение подробно на русском языке.")
-        
-        return jsonify({
-            'task_id': task.id,
-            'celery_task_id': celery_task.id,
-            'status': 'processing',
-            'message': 'Анализ изображения запущен'
-        }), 202
+        # Простой вызов ollama vision (если поддерживается)
+        # Если модель не поддерживает картинки, будет ошибка, но мы её поймаем
+        try:
+            response = ollama.analyze_image(image_base64, "Опиши изображение")
+            update_task_history(db, task.id, result=response, status='completed')
+            return jsonify({
+                'task_id': task.id,
+                'status': 'completed',
+                'result': response
+            })
+        except Exception as e:
+            update_task_history(db, task.id, result=str(e), status='failed')
+            return jsonify({'error': f'Ошибка анализа: {str(e)}'}), 500
     
     finally:
         db.close()
@@ -377,12 +394,14 @@ def get_task_status(task_id: int):
     """Получить статус задачи"""
     db = SessionLocal()
     try:
-        # В реальном приложении здесь была бы проверка статуса Celery задачи
-        # Пока просто возвращаем заглушку
+        task = db.query(TaskHistory).get(task_id)
+        if not task:
+            return jsonify({'error': 'Задача не найдена'}), 404
+            
         return jsonify({
-            'task_id': task_id,
-            'status': 'completed',
-            'result': 'Это заглушка. Реальный статус будет после интеграции с Celery.'
+            'task_id': task.id,
+            'status': task.status,
+            'result': task.result_data
         })
     finally:
         db.close()
@@ -417,15 +436,16 @@ def upload_audio():
             unique_filename
         )
         
-        # Запускаем фоновую задачу Celery
-        celery_task = transcribe_audio_task.delay(filepath, unique_filename)
+        # ЗАГЛУШКА: Возвращаем текст сразу
+        result_text = "Транскрибация пока в разработке. Файл сохранен: " + unique_filename
+        
+        update_task_history(db, task.id, result=result_text, status='completed')
         
         return jsonify({
             'task_id': task.id,
-            'celery_task_id': celery_task.id,
-            'status': 'processing',
-            'message': 'Транскрибация запущена'
-        }), 202
+            'status': 'completed',
+            'result': result_text
+        })
     
     finally:
         db.close()
@@ -488,7 +508,7 @@ def get_group(group_id: int):
         if not group:
             return jsonify({'error': 'Группа не найдена'}), 404
         
-        if not is_client_member_of_group(db, group_id, session['client_id']):
+        if not is_client_member_of_group(db, session['client_id'], group_id):
             return jsonify({'error': 'Нет доступа к группе'}), 403
         
         members = db.query(GroupMember).filter(
@@ -507,7 +527,7 @@ def get_group(group_id: int):
             },
             'members': [{
                 'client_id': m.client_id,
-                'username': m.client.username,
+                'login': m.client.login,
                 'status': m.status
             } for m in members],
             'messages': [{
@@ -515,8 +535,7 @@ def get_group(group_id: int):
                 'content': m.content,
                 'sender_type': m.sender_type,
                 'sender_id': m.sender_id,
-                'sender_name': m.sender.username if m.sender else 'AI',
-                'message_type': m.message_type,
+                'sender_name': m.sender.login if m.sender else 'AI',
                 'created_at': m.created_at.isoformat()
             } for m in messages]
         })
@@ -529,9 +548,9 @@ def get_group(group_id: int):
 def invite_to_group(group_id: int):
     """Пригласить пользователя в группу"""
     data = request.get_json()
-    username = data.get('username', '').strip()
+    target_login = data.get('login', '').strip()
     
-    if not username:
+    if not target_login:
         return jsonify({'error': 'Логин пользователя обязателен'}), 400
     
     db = SessionLocal()
@@ -542,7 +561,7 @@ def invite_to_group(group_id: int):
             return jsonify({'error': 'Только владелец может приглашать'}), 403
         
         # Находим приглашаемого
-        invitee = get_client_by_username(db, username)
+        invitee = get_client_by_login(db, target_login)
         if not invitee:
             return jsonify({'error': 'Пользователь не найден'}), 404
         
@@ -553,7 +572,7 @@ def invite_to_group(group_id: int):
         member = invite_client_to_group(db, group_id, invitee.id)
         
         return jsonify({
-            'message': f'Приглашение отправлено пользователю {username}',
+            'message': f'Приглашение отправлено пользователю {target_login}',
             'status': member.status
         })
     finally:
@@ -595,18 +614,19 @@ def start_observer():
     
     db = SessionLocal()
     try:
-        if not is_client_member_of_group(db, group_id, session['client_id']):
+        if not is_client_member_of_group(db, session['client_id'], group_id):
             return jsonify({'error': 'Нет доступа к группе'}), 403
         
         # Получаем сообщения
-        messages = get_group_history(db, group_id, session['client_id'], limit=100 if analysis_type == 'full' else 10)
+        limit = 100 if analysis_type == 'full' else 10
+        messages = get_group_history(db, group_id, session['client_id'], limit=limit)
         
         if not messages:
             return jsonify({'error': 'Нет сообщений для анализа'}), 400
         
         # Форматируем для анализа
         formatted_messages = [
-            {'sender': m.sender.username if m.sender else 'AI', 'content': m.content}
+            {'sender': m.sender.login if m.sender else 'AI', 'content': m.content}
             for m in messages
         ]
         
@@ -615,15 +635,11 @@ def start_observer():
             db, group_id, session['client_id'], role_prompt, analysis_type
         )
         
-        # Запускаем фоновую задачу
-        celery_task = analyze_chat_observer_task.delay(
-            formatted_messages, role_prompt, analysis_type
-        )
+        # Вызываем Ollama для анализа
+        context = "\n".join([f"{m['sender']}: {m['content']}" for m in formatted_messages])
+        prompt = f"{role_prompt}\n\nДиалог:\n{context}"
         
-        # Для демонстрации сразу делаем синхронный запрос
-        ai_analysis = ollama.analyze_chat_as_observer(
-            formatted_messages, role_prompt, analysis_type
-        )
+        ai_analysis = ollama.chat(message=prompt, system_prompt="Ты наблюдатель.")
         
         # Сохраняем результат
         analysis = add_observer_analysis(

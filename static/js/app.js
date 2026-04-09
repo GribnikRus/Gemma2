@@ -27,7 +27,14 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
     }
     
     const response = await fetch(endpoint, options);
-    const result = await response.json();
+    
+    // Пробуем распарсить JSON, даже если ошибка
+    let result;
+    try {
+        result = await response.json();
+    } catch (e) {
+        result = { error: 'Неверный формат ответа сервера' };
+    }
     
     if (!response.ok) {
         throw new Error(result.error || 'Ошибка запроса');
@@ -83,16 +90,19 @@ function initAuth() {
     if (loginForm) {
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const username = document.getElementById('login-username').value;
+            // ИСПРАВЛЕНО: используем login вместо username
+            const login = document.getElementById('login-username').value;
             const password = document.getElementById('login-password').value;
             
             try {
-                const result = await apiRequest('/api/auth/login', 'POST', { username, password });
+                const result = await apiRequest('/api/auth/login', 'POST', { login, password });
                 state.currentUser = result;
                 showApp();
                 loadChats();
             } catch (error) {
-                document.getElementById('login-error').textContent = error.message;
+                const errorEl = document.getElementById('login-error');
+                if (errorEl) errorEl.textContent = error.message;
+                else alert(error.message);
             }
         });
     }
@@ -102,16 +112,20 @@ function initAuth() {
     if (registerForm) {
         registerForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const username = document.getElementById('register-username').value;
+            // ИСПРАВЛЕНО: используем login вместо username
+            const login = document.getElementById('register-username').value;
             const password = document.getElementById('register-password').value;
             
             try {
-                const result = await apiRequest('/api/auth/register', 'POST', { username, password });
+                const result = await apiRequest('/api/auth/register', 'POST', { login, password });
+                // После регистрации обычно просят войти, но если бэкенд сразу логинит:
                 state.currentUser = result;
                 showApp();
                 loadChats();
             } catch (error) {
-                document.getElementById('register-error').textContent = error.message;
+                const errorEl = document.getElementById('register-error');
+                if (errorEl) errorEl.textContent = error.message;
+                else alert(error.message);
             }
         });
     }
@@ -123,7 +137,7 @@ function initAuth() {
             try {
                 await apiRequest('/api/auth/logout', 'POST');
                 state.currentUser = null;
-                showAuth();
+                window.location.reload(); // Перезагрузка для очистки состояния
             } catch (error) {
                 console.error('Ошибка выхода:', error);
             }
@@ -132,16 +146,24 @@ function initAuth() {
 }
 
 function showAuth() {
-    document.getElementById('auth-modal').classList.remove('hidden');
-    document.getElementById('app-container').classList.add('hidden');
+    const modal = document.getElementById('auth-modal');
+    const app = document.getElementById('app-container');
+    if (modal) modal.classList.remove('hidden');
+    if (app) app.classList.add('hidden');
 }
 
 function showApp() {
-    document.getElementById('auth-modal').classList.add('hidden');
-    document.getElementById('app-container').classList.remove('hidden');
+    const modal = document.getElementById('auth-modal');
+    const app = document.getElementById('app-container');
+    if (modal) modal.classList.add('hidden');
+    if (app) app.classList.remove('hidden');
     
     if (state.currentUser) {
-        document.getElementById('user-display').textContent = `@${state.currentUser.username}`;
+        const userDisplay = document.getElementById('user-display');
+        if (userDisplay) {
+            // ИСПРАВЛЕНО: используем login
+            userDisplay.textContent = `@${state.currentUser.login}`;
+        }
     }
 }
 
@@ -215,8 +237,10 @@ async function selectChat(chatId, type) {
         }
         
         // Обновляем заголовок
-        document.getElementById('current-chat-title').textContent = 
-            type === 'personal' ? state.currentChat.title : state.currentChat.name;
+        const titleEl = document.getElementById('current-chat-title');
+        if (titleEl) {
+            titleEl.textContent = type === 'personal' ? state.currentChat.title : state.currentChat.name;
+        }
         
         // Рендерим сообщения
         renderMessages(data.messages || []);
@@ -227,10 +251,10 @@ async function selectChat(chatId, type) {
         // Показываем правую панель для групп
         const rightPanel = document.getElementById('right-panel');
         if (type === 'group' && data.members) {
-            rightPanel.classList.remove('hidden');
+            if (rightPanel) rightPanel.classList.remove('hidden');
             renderMembers(data.members);
         } else {
-            rightPanel.classList.add('hidden');
+            if (rightPanel) rightPanel.classList.add('hidden');
         }
         
     } catch (error) {
@@ -258,10 +282,11 @@ function renderMembers(members) {
     const container = document.getElementById('members-list');
     if (!container) return;
     
+    // ИСПРАВЛЕНО: member.username -> member.login
     container.innerHTML = members.map(member => `
         <div class="member-item">
-            <div class="member-avatar">${member.username.charAt(0).toUpperCase()}</div>
-            <span>${escapeHtml(member.username)}</span>
+            <div class="member-avatar">${(member.login || 'U').charAt(0).toUpperCase()}</div>
+            <span>${escapeHtml(member.login)}</span>
         </div>
     `).join('');
 }
@@ -337,7 +362,9 @@ async function sendMessage() {
         const result = await apiRequest('/api/chat/send', 'POST', data);
         
         // Показываем ответ ИИ
-        showMessage('ai', result.ai_message.content);
+        if (result.ai_message) {
+            showMessage('ai', result.ai_message.content);
+        }
         
     } catch (error) {
         console.error('Ошибка отправки:', error);
@@ -395,7 +422,7 @@ async function uploadImage() {
         // В реальном приложении здесь был бы polling статуса задачи
         setTimeout(async () => {
             // Эмуляция получения результата
-            showMessage('ai', '🖼️ Результат анализа изображения будет доступен после завершения фоновой задачи Celery.');
+            showMessage('ai', '🖼️ Результат анализа изображения будет доступен после завершения фоновой задачи.');
         }, 2000);
         
     } catch (error) {
@@ -440,8 +467,11 @@ async function analyzeWithObserver() {
         return;
     }
     
-    const role = document.getElementById('observer-role').value;
-    const analysisType = document.getElementById('observer-type').value;
+    const roleSelect = document.getElementById('observer-role');
+    const typeSelect = document.getElementById('observer-type');
+    
+    const role = roleSelect ? roleSelect.value : 'Ты аналитик.';
+    const analysisType = typeSelect ? typeSelect.value : 'quick';
     
     try {
         showMessage('ai', `👁️ Запуск анализа в роли "${role}"...`);
@@ -486,6 +516,8 @@ async function createNewChat() {
 // ==================== СОЗДАНИЕ ГРУППЫ ====================
 async function createGroup() {
     const input = document.getElementById('new-group-name');
+    if (!input) return;
+    
     const name = input.value.trim();
     
     if (!name) {
@@ -517,6 +549,7 @@ async function createGroup() {
 
 // ==================== УТИЛИТЫ ====================
 function escapeHtml(text) {
+    if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
@@ -534,8 +567,9 @@ document.addEventListener('DOMContentLoaded', () => {
     initAuth();
     
     // Проверка сессии
-    if (document.getElementById('app-container')) {
-        // Если мы уже на странице приложения
+    // Если мы уже на странице приложения (не логин), пробуем получить данные
+    const appContainer = document.getElementById('app-container');
+    if (appContainer) {
         apiRequest('/api/auth/me')
             .then(user => {
                 state.currentUser = user;
@@ -543,6 +577,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadChats();
             })
             .catch(() => {
+                // Если не удалось получить пользователя, показываем окно входа
+                // Но так как у нас SPA внутри index.html, просто ничего не делаем или показываем модалку
                 showAuth();
             });
     }

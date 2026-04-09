@@ -7,6 +7,7 @@ __pycache__/
 .env
 .env.local
 .env.*
+.venv/
 
 # Logs and temp files
 *.log
@@ -20,4 +21,7 @@ __pycache__/
 # Build artifacts
 dist/
 build/
-```
+venv/
+```venv/
+uploads/
+*.pid
