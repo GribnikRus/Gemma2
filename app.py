@@ -260,6 +260,7 @@ def get_personal_chat(chat_id: int):
                 'id': m.id,
                 'content': m.content,
                 'sender_type': m.sender_type,
+                'sender_name': m.sender.login if m.sender else 'Gemma AI',
                 'created_at': m.created_at.isoformat()
             } for m in messages]
         })
@@ -322,15 +323,20 @@ def send_message():
                     'id': ai_msg.id,
                     'content': ai_msg.content,
                     'sender_type': ai_msg.sender_type,
+                    'sender_name': 'Gemma AI',
                     'created_at': ai_msg.created_at.isoformat()
                 }
             
             logger.info(f"Message sent to personal chat {personal_chat_id}, status=200")
+            
+            # Получаем имя отправителя для user_message
+            user_client = get_client_by_id(db, session['client_id'])
             result = {
                 'user_message': {
                     'id': user_msg.id,
                     'content': user_msg.content,
                     'sender_type': user_msg.sender_type,
+                    'sender_name': user_client.login if user_client else 'Unknown',
                     'created_at': user_msg.created_at.isoformat()
                 }
             }
@@ -375,15 +381,20 @@ def send_message():
                     'id': ai_msg.id,
                     'content': ai_msg.content,
                     'sender_type': ai_msg.sender_type,
+                    'sender_name': 'Gemma AI',
                     'created_at': ai_msg.created_at.isoformat()
                 }
 
             logger.info(f"Message sent to group {group_id}, status=200")
+            
+            # Получаем имя отправителя для user_message
+            user_client = get_client_by_id(db, session['client_id'])
             result = {
                 'user_message': {
                     'id': user_msg.id,
                     'content': user_msg.content,
                     'sender_type': user_msg.sender_type,
+                    'sender_name': user_client.login if user_client else 'Unknown',
                     'created_at': user_msg.created_at.isoformat()
                 }
             }
@@ -804,7 +815,7 @@ def get_group(group_id: int):
                 'content': m.content,
                 'sender_type': m.sender_type,
                 'sender_id': m.sender_id,
-                'sender_name': m.sender.login if m.sender else 'AI',
+                'sender_name': m.sender.login if m.sender else 'Gemma AI',
                 'created_at': m.created_at.isoformat()
             } for m in messages]
         })
@@ -895,7 +906,7 @@ def start_observer():
         
         # Форматируем для анализа
         formatted_messages = [
-            {'sender': m.sender.login if m.sender else 'AI', 'content': m.content}
+            {'sender': m.sender.login if m.sender else 'Gemma AI', 'content': m.content}
             for m in messages
         ]
         

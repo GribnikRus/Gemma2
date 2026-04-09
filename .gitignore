@@ -1,14 +1,9 @@
 ```
-# Build artifacts
-dist/
-build/
-*.min.js
-*.min.css
-*.bundle.js
-*.map
-
-# Dependencies
-node_modules/
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
 # Logs and temp files
 *.log
@@ -17,7 +12,7 @@ node_modules/
 # Environment
 .env
 .env.local
-.env.*
+*.env.*
 
 # Editors
 .vscode/
@@ -25,7 +20,13 @@ node_modules/
 *.swp
 *.swo
 
-# OS generated files
-.DS_Store
-Thumbs.db
+# Dependencies
+venv/
+.venv/
+node_modules/
+
+# Build artifacts
+dist/
+build/
+target/
 ```
