@@ -118,6 +118,7 @@ function initAuth() {
             try {
                 const result = await apiRequest('/api/auth/login', 'POST', { login, password });
                 state.currentUser = result;
+                // Показываем приложение БЕЗ перезагрузки
                 showApp();
                 loadChats();
             } catch (error) {
@@ -139,10 +140,10 @@ function initAuth() {
             
             try {
                 const result = await apiRequest('/api/auth/register', 'POST', { login, password });
-                // После регистрации обычно просят войти, но если бэкенд сразу логинит:
-                state.currentUser = result;
-                showApp();
-                loadChats();
+                // Показываем уведомление об успехе
+                showToast('Регистрация успешна! Теперь войдите.');
+                // Переключаем на форму входа
+                switchToLoginTab();
             } catch (error) {
                 const errorEl = document.getElementById('register-error');
                 if (errorEl) errorEl.textContent = error.message;
@@ -171,6 +172,31 @@ function showAuth() {
     const app = document.getElementById('app-container');
     if (modal) modal.classList.remove('hidden');
     if (app) app.classList.add('hidden');
+}
+
+// ==================== УТИЛИТЫ ====================
+
+function showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    // Показываем
+    setTimeout(() => toast.classList.add('show'), 10);
+    
+    // Скрываем через 3 секунды
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+function switchToLoginTab() {
+    const loginTab = document.querySelector('.tab-btn[data-tab="login"]');
+    if (loginTab) {
+        loginTab.click();
+    }
 }
 
 function showApp() {
@@ -948,3 +974,213 @@ document.addEventListener('DOMContentLoaded', () => {
     // Начальный режим
     setMode('chat');
 });
+
+// ==================== МОБИЛЬНОЕ МЕНЮ ====================
+const hamburgerMenu = document.getElementById('hamburger-menu');
+const sidebar = document.getElementById('sidebar');
+const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+if (hamburgerMenu && sidebar) {
+    hamburgerMenu.addEventListener('click', () => {
+        sidebar.classList.toggle('open');
+        if (sidebarOverlay) sidebarOverlay.classList.toggle('active');
+    });
+}
+
+if (sidebarOverlay && sidebar) {
+    sidebarOverlay.addEventListener('click', () => {
+        sidebar.classList.remove('open');
+        sidebarOverlay.classList.remove('active');
+    });
+}
+
+// ==================== AI TOGGLE ====================
+const aiToggle = document.getElementById('ai-enabled-toggle');
+let currentAiEnabled = true;
+
+if (aiToggle) {
+    aiToggle.addEventListener('change', async () => {
+        if (!state.currentChat) return;
+        
+        try {
+            const chatType = state.currentChatType === 'personal' ? 'personal' : 'group';
+            const result = await apiRequest('/api/chat/toggle_ai', 'POST', {
+                chat_type: chatType,
+                chat_id: state.currentChat.id
+            });
+            currentAiEnabled = result.ai_enabled;
+            aiToggle.checked = currentAiEnabled;
+            showToast(currentAiEnabled ? 'ИИ-ассистент включен' : 'ИИ-ассистент отключен');
+        } catch (error) {
+            console.error('Ошибка переключения ИИ:', error);
+            showToast('Ошибка переключения ИИ');
+        }
+    });
+}
+
+// ==================== ПРИГЛАШЕНИЯ В ГРУППЫ ====================
+const inviteUserBtn = document.getElementById('invite-user-btn');
+if (inviteUserBtn) {
+    inviteUserBtn.addEventListener('click', async () => {
+        const loginInput = document.getElementById('invite-login-input');
+        const login = loginInput.value.trim();
+        
+        if (!login || !state.currentChat || state.currentChatType !== 'group') {
+            showToast('Выберите группу и введите логин');
+            return;
+        }
+        
+        try {
+            await apiRequest('/api/group/invite', 'POST', {
+                group_id: state.currentChat.id,
+                login: login
+            });
+            showToast(`Приглашение отправлено пользователю ${login}`);
+            loginInput.value = '';
+        } catch (error) {
+            showToast(error.message || 'Ошибка отправки приглашения');
+        }
+    });
+}
+
+// Загрузка входящих приглашений
+async function loadInvitations() {
+    try {
+        const data = await apiRequest('/api/invitations');
+        renderInvitations(data.invitations || []);
+    } catch (error) {
+        console.error('Ошибка загрузки приглашений:', error);
+    }
+}
+
+function renderInvitations(invitations) {
+    const container = document.getElementById('invitations-list');
+    if (!container) return;
+    
+    if (invitations.length === 0) {
+        container.innerHTML = '<div class="hint">Нет входящих приглашений</div>';
+        return;
+    }
+    
+    container.innerHTML = invitations.map(inv => `
+        <div class="member-item" data-invitation-id="${inv.id}">
+            <div class="member-avatar">${(inv.group_name || 'G').charAt(0).toUpperCase()}</div>
+            <span>${escapeHtml(inv.group_name)}</span>
+            <button class="btn btn-sm btn-primary accept-invite-btn" data-group-id="${inv.group_id}">Принять</button>
+        </div>
+    `).join('');
+    
+    container.querySelectorAll('.accept-invite-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const groupId = parseInt(btn.dataset.groupId);
+            try {
+                await apiRequest('/api/invitations/accept', 'POST', { group_id: groupId });
+                showToast('Приглашение принято!');
+                loadInvitations();
+                loadChats(); // Обновить список групп
+            } catch (error) {
+                showToast(error.message || 'Ошибка принятия приглашения');
+            }
+        });
+    });
+}
+
+// ==================== СТАТУС ПОЛЬЗОВАТЕЛЕЙ ====================
+async function loadUsersStatus() {
+    try {
+        const data = await apiRequest('/api/users/list');
+        // Сохраняем статусы для использования при рендеринге участников
+        state.usersStatus = data.users || [];
+    } catch (error) {
+        console.error('Ошибка загрузки статусов:', error);
+    }
+}
+
+function isUserOnline(login) {
+    const user = state.usersStatus?.find(u => u.login === login);
+    return user?.is_online || false;
+}
+
+function renderMembersWithStatus(members) {
+    const container = document.getElementById('members-list');
+    if (!container) return;
+    
+    container.innerHTML = members.map(member => {
+        const online = isUserOnline(member.login);
+        return `
+            <div class="member-item">
+                <span class="${online ? 'online-indicator' : 'offline-indicator'}"></span>
+                <div class="member-avatar">${(member.login || 'U').charAt(0).toUpperCase()}</div>
+                <span>${escapeHtml(member.login)} ${online ? '(онлайн)' : ''}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+// Переопределяем renderMembers для отображения статуса
+const originalRenderMembers = renderMembers;
+renderMembers = function(members) {
+    renderMembersWithStatus(members);
+};
+
+// ==================== НАБЛЮДАТЕЛЬ ДЛЯ ЛИЧНЫХ ЧАТОВ ====================
+async function analyzePersonalChatWithObserver() {
+    if (!state.currentChat || state.currentChatType !== 'personal') {
+        showToast('Выберите личный чат для анализа');
+        return;
+    }
+    
+    const roleSelect = document.getElementById('observer-role');
+    const typeSelect = document.getElementById('observer-type');
+    const customPromptInput = document.getElementById('observer-custom-prompt');
+    
+    let rolePrompt = OBSERVER_ROLES[roleSelect.value] || 'Проанализируй диалог.';
+    if (roleSelect.value === 'Custom') {
+        rolePrompt = customPromptInput.value || 'Проанализируй диалог.';
+    }
+    
+    const analysisType = typeSelect.value;
+    
+    try {
+        const result = await apiRequest('/api/chat/observe', 'POST', {
+            personal_chat_id: state.currentChat.id,
+            role_prompt: rolePrompt,
+            analysis_type: analysisType
+        });
+        
+        const resultsContainer = document.getElementById('observer-results-container');
+        const resultText = document.getElementById('observer-analysis-result');
+        
+        if (resultsContainer && resultText) {
+            resultsContainer.classList.remove('hidden');
+            resultText.textContent = result.result;
+        }
+        
+        showToast('Анализ завершен');
+    } catch (error) {
+        showToast(error.message || 'Ошибка анализа');
+    }
+}
+
+// Модифицируем analyzeWithObserver для поддержки личных чатов
+const originalAnalyzeWithObserver = window.analyzeWithObserver || null;
+window.analyzeWithObserver = async function() {
+    if (state.currentChatType === 'personal') {
+        await analyzePersonalChatWithObserver();
+    } else if (state.currentChatType === 'group') {
+        if (originalAnalyzeWithObserver) {
+            await originalAnalyzeWithObserver();
+        }
+    } else {
+        showToast('Выберите чат для анализа');
+    }
+};
+
+// ==================== ЗАГРУЗКА ПРИ ЗАПУСКЕ ====================
+// Переопределяем loadChats для загрузки статусов и приглашений
+const originalLoadChats = loadChats;
+loadChats = async function() {
+    await originalLoadChats();
+    await loadUsersStatus();
+    await loadInvitations();
+};

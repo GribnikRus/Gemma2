@@ -28,6 +28,7 @@ class Client(Base):
     login = Column(String(100), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_seen = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     client_uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
     # Связи
     personal_chats = relationship("PersonalChat", back_populates="owner", cascade="all, delete-orphan")
@@ -42,6 +43,7 @@ class PersonalChat(Base):
     title = Column(String(255), default="Личный чат")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    ai_enabled = Column(Boolean, default=True)
     
     owner = relationship("Client", back_populates="personal_chats")
     messages = relationship("ChatMessage", back_populates="personal_chat", cascade="all, delete-orphan")
@@ -54,6 +56,7 @@ class ChatGroup(Base):
     owner_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    ai_enabled = Column(Boolean, default=True)
     
     owner = relationship("Client", foreign_keys=[owner_id])
     members = relationship("GroupMember", back_populates="group", cascade="all, delete-orphan")
@@ -373,3 +376,105 @@ def add_observer_analysis(db, session_id: int, analysis_content: str, messages_a
     db.refresh(analysis)
     logger.info(f"Observer analysis added: id={analysis.id}")
     return analysis
+
+
+# ==================== НОВЫЕ HELPER ФУНКЦИИ ====================
+
+def update_client_last_seen(db, client_id: int):
+    """Обновляет last_seen для клиента"""
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if client:
+        client.last_seen = func.now()
+        db.commit()
+        logger.debug(f"Updated last_seen for client {client_id}")
+    return client
+
+
+def get_all_users_with_status(db):
+    """Возвращает список всех пользователей со статусом online/offline"""
+    from datetime import datetime, timedelta
+    clients = db.query(Client).all()
+    users = []
+    now = datetime.utcnow()
+    for client in clients:
+        is_online = False
+        if client.last_seen:
+            # Если last_seen меньше 5 минут назад - считаем онлайн
+            is_online = (now - client.last_seen) < timedelta(minutes=5)
+        users.append({
+            'id': client.id,
+            'login': client.login,
+            'last_seen': client.last_seen.isoformat() if client.last_seen else None,
+            'is_online': is_online
+        })
+    logger.debug(f"Retrieved {len(users)} users with status")
+    return users
+
+
+def get_pending_invitations(db, client_id: int):
+    """Возвращает все pending-приглашения для клиента"""
+    memberships = db.query(GroupMember).join(ChatGroup).filter(
+        GroupMember.client_id == client_id,
+        GroupMember.status == 'pending'
+    ).all()
+    
+    invitations = []
+    for m in memberships:
+        invitations.append({
+            'id': m.id,
+            'group_id': m.group_id,
+            'group_name': m.group.name,
+            'status': m.status,
+            'invited_at': m.joined_at.isoformat() if m.joined_at else None
+        })
+    logger.debug(f"Retrieved {len(invitations)} pending invitations for client {client_id}")
+    return invitations
+
+
+def accept_invitation(db, group_id: int, client_id: int):
+    """Принимает приглашение в группу"""
+    member = db.query(GroupMember).filter(
+        GroupMember.group_id == group_id,
+        GroupMember.client_id == client_id,
+        GroupMember.status == 'pending'
+    ).first()
+    
+    if member:
+        member.status = 'accepted'
+        db.commit()
+        logger.info(f"Client {client_id} accepted invitation to group {group_id}")
+        return True
+    else:
+        logger.warning(f"No pending invitation found for client {client_id} in group {group_id}")
+        return False
+
+
+def get_personal_chat_by_id(db, chat_id: int):
+    """Получает личный чат по ID"""
+    chat = db.query(PersonalChat).filter(PersonalChat.id == chat_id).first()
+    return chat
+
+
+def get_group_by_id(db, group_id: int):
+    """Получает группу по ID"""
+    group = db.query(ChatGroup).filter(ChatGroup.id == group_id).first()
+    return group
+
+
+def toggle_chat_ai_enabled(db, chat_type: str, chat_id: int, ai_enabled: bool):
+    """Переключает флаг ai_enabled для чата"""
+    if chat_type == 'personal':
+        chat = get_personal_chat_by_id(db, chat_id)
+        if chat:
+            chat.ai_enabled = ai_enabled
+            db.commit()
+            logger.info(f"Set ai_enabled={ai_enabled} for personal chat {chat_id}")
+            return True
+    elif chat_type == 'group':
+        group = get_group_by_id(db, chat_id)
+        if group:
+            group.ai_enabled = ai_enabled
+            db.commit()
+            logger.info(f"Set ai_enabled={ai_enabled} for group {chat_id}")
+            return True
+    return False
