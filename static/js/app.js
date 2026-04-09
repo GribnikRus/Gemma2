@@ -269,7 +269,14 @@ async function sendMessage() {
     
     // Отобразить сразу
     const c = document.getElementById('messages-container');
-    c.innerHTML += `<div class="message user">${txt}<div class="msg-time">...</div></div>`;
+    
+    // Определяем имя отправителя для мгновенного отображения
+    let senderHtml = '';
+    if (state.currentChatType === 'group') {
+        senderHtml = `<span class="msg-sender" style="color: #3390ec; font-weight: bold;">${state.currentUser.login}</span>`;
+    }
+    
+    c.innerHTML += `<div class="message user">${senderHtml}<div class="msg-content">${txt}</div><div class="msg-time">...</div></div>`;
     inp.value = '';
     c.scrollTop = c.scrollHeight;
 
@@ -279,8 +286,34 @@ async function sendMessage() {
             personal_chat_id: state.currentChatType === 'personal' ? state.currentChat.id : null,
             group_id: state.currentChatType === 'group' ? state.currentChat.id : null
         });
+        
+        // Обновляем последнее сообщение с правильными данными из ответа
+        if (res.user_message) {
+            // Для группового чата перерисовываем все сообщения чтобы показать корректные имена
+            if (state.currentChatType === 'group') {
+                // Добавляем sender_name к user_message и перерисовываем
+                const updatedUserMessage = {
+                    ...res.user_message,
+                    sender_name: state.currentUser.login
+                };
+                // Получаем текущие сообщения и добавляем новое
+                const currentMsgs = Array.from(document.querySelectorAll('#messages-container .message')).map(el => ({
+                    content: el.querySelector('.msg-content')?.textContent || '',
+                    created_at: new Date().toISOString()
+                }));
+                // Просто перерисуем с добавлением имени отправителя
+                renderMessages([...currentMsgs.slice(0, -1), updatedUserMessage]);
+                if (res.ai_message) {
+                    const aiMsg = {...res.ai_message, sender_name: 'Gemma AI'};
+                    renderMessages([...currentMsgs.slice(0, -1), updatedUserMessage, aiMsg]);
+                }
+                return;
+            }
+        }
+        
         if (res.ai_message) {
-            c.innerHTML += `<div class="message ai"><span class="msg-sender">Gemma</span>${res.ai_message.content}<div class="msg-time">${new Date().toLocaleTimeString()}</div></div>`;
+            const aiSenderHtml = `<span class="msg-sender" style="color: #e53935; font-weight: bold;">Gemma AI</span>`;
+            c.innerHTML += `<div class="message ai">${aiSenderHtml}<div class="msg-content">${res.ai_message.content}</div><div class="msg-time">${new Date().toLocaleTimeString()}</div></div>`;
         }
         c.scrollTop = c.scrollHeight;
     } catch(e) { alert(e.message); }
