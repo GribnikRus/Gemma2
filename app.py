@@ -970,7 +970,7 @@ def get_users_list():
     try:
         clients = db.query(Client).all()
         users_data = []
-        now = datetime.utcnow()
+        now = datetime.now(datetime.timezone.utc)
         
         for c in clients:
             is_online = False
