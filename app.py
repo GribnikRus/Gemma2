@@ -388,19 +388,6 @@ def send_message():
             if ai_message:
                 result['ai_message'] = ai_message
             return jsonify(result)
-            # Групповой чат
-            if not is_client_member_of_group(db, session['client_id'], group_id):
-                logger.warning(f"Client {client_id} not member of group {group_id}")
-                return jsonify({'error': 'Нет доступа к группе'}), 403
-            
-            # Добавляем сообщение пользователя
-            user_msg = add_message(
-                db, content, 'client', session['client_id'],
-                group_id=group_id, message_type='text'
-            )
-            
-            logger.warning(f"No chat specified in request from {client_ip}")
-            return jsonify({'error': 'Не указан чат'}), 400
     
     finally:
         db.close()

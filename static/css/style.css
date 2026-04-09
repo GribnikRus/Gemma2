@@ -518,21 +518,113 @@ body {
         grid-template-columns: 1fr;
     }
     
+    /* Боковая панель скрыта по умолчанию и появляется при нажатии на меню */
     .sidebar {
         position: fixed;
         left: -280px;
         top: 0;
-        height: 100%;
+        height: 100vh;
+        width: 280px;
         z-index: 100;
-        transition: left 0.3s;
+        transition: transform 0.3s ease;
+        transform: translateX(-100%);
     }
     
     .sidebar.open {
+        transform: translateX(0);
         left: 0;
+        box-shadow: var(--shadow-lg);
     }
     
+    /* Основная область чата занимает 100% ширины и высоты */
+    .main-content {
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .chat-header {
+        padding: 0.75rem 1rem;
+        padding-left: 3rem; /* Отступ для кнопки гамбургер */
+    }
+    
+    .chat-header h2 {
+        font-size: 1rem;
+    }
+    
+    /* Вкладки прокручиваемые по горизонтали */
     .chat-mode-selector {
-        flex-wrap: wrap;
+        gap: 0.25rem;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .mode-btn {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.75rem;
+        white-space: nowrap;
+    }
+    
+    .messages-container {
+        padding: 1rem;
+        flex: 1;
+        overflow-y: auto;
+    }
+    
+    .message {
+        max-width: 90%;
+    }
+    
+    /* Поле ввода фиксировано внизу и не перекрывается клавиатурой */
+    .input-area {
+        padding: 0.75rem 1rem;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background-color: var(--card-bg);
+        border-top: 1px solid var(--border-color);
+        z-index: 50;
+    }
+    
+    /* Добавляем отступ снизу для messages-container чтобы контент не перекрывался input-area */
+    .main-content {
+        padding-bottom: 80px; /* Высота input-area + отступ */
+    }
+    
+    .input-container textarea {
+        min-height: 50px;
+        max-height: 100px;
+        resize: vertical;
+    }
+    
+    /* Правая панель также скрыта и появляется по кнопке */
+    .right-panel {
+        position: fixed;
+        right: -300px;
+        top: 0;
+        height: 100%;
+        width: 300px;
+        z-index: 100;
+        transition: right 0.3s ease;
+        background-color: var(--card-bg);
+    }
+    
+    .right-panel.open {
+        right: 0;
+        box-shadow: var(--shadow-lg);
+    }
+    
+    /* Адаптивность для превью изображений */
+    .image-preview {
+        width: 70px;
+        height: 70px;
+    }
+    
+    .preview-container {
+        max-height: 120px;
     }
 }
 
@@ -941,13 +1033,15 @@ input:checked + .ai-toggle-slider:before {
         position: fixed;
         left: -280px;
         top: 0;
-        height: 100%;
+        height: 100vh;
         z-index: 100;
-        transition: left 0.3s ease;
+        transition: transform 0.3s ease;
+        transform: translateX(-100%);
         width: 280px;
     }
     
     .sidebar.open {
+        transform: translateX(0);
         left: 0;
         box-shadow: var(--shadow-lg);
     }
