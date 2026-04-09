@@ -275,26 +275,30 @@ def get_client_groups(db, client_id: int):
     logger.debug(f"Retrieved {len(groups)} groups for client {client_id}")
     return groups
 
-def get_group_history(db, group_id: int, client_id: int, limit: int = 50):
+def get_group_history(db, group_id: int, client_id: int, limit: int = 50, last_message_id: int = None):
     if not is_client_member_of_group(db, client_id, group_id):
         logger.warning(f"Client {client_id} not member of group {group_id}, denying history access")
         return []
     
-    messages = db.query(ChatMessage).filter(
-        ChatMessage.group_id == group_id
-    ).order_by(ChatMessage.created_at.asc()).limit(limit).all()
-    logger.debug(f"Retrieved {len(messages)} messages for group {group_id}")
+    query = db.query(ChatMessage).filter(ChatMessage.group_id == group_id)
+    if last_message_id is not None:
+        query = query.filter(ChatMessage.id > last_message_id)
+    
+    messages = query.order_by(ChatMessage.created_at.asc()).limit(limit).all()
+    logger.debug(f"Retrieved {len(messages)} messages for group {group_id} (last_message_id={last_message_id})")
     return messages
 
-def get_personal_chat_history(db, chat_id: int, client_id: int, limit: int = 50):
+def get_personal_chat_history(db, chat_id: int, client_id: int, limit: int = 50, last_message_id: int = None):
     chat = get_personal_chat(db, chat_id, client_id)
     if not chat:
         return []
     
-    messages = db.query(ChatMessage).filter(
-        ChatMessage.personal_chat_id == chat_id
-    ).order_by(ChatMessage.created_at.asc()).limit(limit).all()
-    logger.debug(f"Retrieved {len(messages)} messages for personal chat {chat_id}")
+    query = db.query(ChatMessage).filter(ChatMessage.personal_chat_id == chat_id)
+    if last_message_id is not None:
+        query = query.filter(ChatMessage.id > last_message_id)
+    
+    messages = query.order_by(ChatMessage.created_at.asc()).limit(limit).all()
+    logger.debug(f"Retrieved {len(messages)} messages for personal chat {chat_id} (last_message_id={last_message_id})")
     return messages
 
 def add_message(db, content: str, sender_type: str, sender_id: int = None, 

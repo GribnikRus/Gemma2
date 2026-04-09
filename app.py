@@ -1178,6 +1178,44 @@ def observe_personal_chat():
     finally:
         db.close()
 
+
+# ==================== REAL-TIME POLLING API ====================
+
+@app.route('/api/chat/<int:chat_id>/history', methods=['GET'])
+@login_required
+def get_chat_history_updates(chat_id: int):
+    """Получить новые сообщения для чата (для polling)"""
+    chat_type = request.args.get('type', 'personal')
+    last_message_id = request.args.get('last_message_id', type=int)
+    limit = request.args.get('limit', default=50, type=int)
+    
+    db = SessionLocal()
+    try:
+        if chat_type == 'personal':
+            chat = get_personal_chat_from_db(db, chat_id, session['client_id'])
+            if not chat:
+                return jsonify({'error': 'Чат не найден'}), 404
+            
+            messages = get_personal_chat_history(db, chat_id, session['client_id'], limit=limit, last_message_id=last_message_id)
+        else:  # group
+            if not is_client_member_of_group(db, session['client_id'], chat_id):
+                return jsonify({'error': 'Нет доступа к группе'}), 403
+            
+            messages = get_group_history(db, chat_id, session['client_id'], limit=limit, last_message_id=last_message_id)
+        
+        return jsonify({
+            'messages': [{
+                'id': m.id,
+                'content': m.content,
+                'sender_type': m.sender_type,
+                'sender_name': m.sender.login if m.sender else 'Gemma AI',
+                'created_at': m.created_at.isoformat()
+            } for m in messages]
+        })
+    finally:
+        db.close()
+
+
 if __name__ == '__main__':
     # Обновляем last_seen при старте (опционально)
     logger.info("Starting Gemma-Hub Server...")
