@@ -21,6 +21,8 @@ from db import (
     get_personal_chat_history, add_message,
     create_task_history, update_task_history,
     create_observer_session, add_observer_analysis,
+    update_client_last_seen, get_all_users_with_status, get_pending_invitations,
+    accept_invitation, toggle_chat_ai_enabled, get_personal_chat_by_id, get_group_by_id,
     Client, ChatGroup, GroupMember, TaskHistory
 )
 from ollama_client import OllamaClient
@@ -62,6 +64,12 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         if 'client_id' not in session:
             return jsonify({'error': 'Требуется авторизация'}), 401
+        # Обновляем last_seen при каждом запросе авторизованного пользователя
+        db = SessionLocal()
+        try:
+            update_client_last_seen(db, session['client_id'])
+        finally:
+            db.close()
         return f(*args, **kwargs)
     return decorated_function
 
@@ -937,3 +945,166 @@ def get_client_chats():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5002, debug=True)
+
+# ==================== СТАТУС ПОЛЬЗОВАТЕЛЕЙ ====================
+
+@app.route('/api/users/list', methods=['GET'])
+@login_required
+def get_users_list():
+    """Возвращает список всех пользователей со статусом online/offline"""
+    db = SessionLocal()
+    try:
+        users = get_all_users_with_status(db)
+        logger.info(f"Users list retrieved for client {session['client_id']}")
+        return jsonify({'users': users})
+    finally:
+        db.close()
+
+
+# ==================== ПРИГЛАШЕНИЯ В ГРУППЫ ====================
+
+@app.route('/api/group/invite', methods=['POST'])
+@login_required
+def invite_to_group_api():
+    """Пригласить пользователя в группу по логину"""
+    data = request.get_json()
+    group_id = data.get('group_id')
+    login = data.get('login', '').strip()
+    
+    if not group_id or not login:
+        return jsonify({'error': 'Необходимо указать group_id и login'}), 400
+    
+    db = SessionLocal()
+    try:
+        # Проверяем существование группы
+        group = get_group_by_id(db, group_id)
+        if not group:
+            return jsonify({'error': 'Группа не найдена'}), 404
+        
+        # Проверяем что текущий пользователь - владелец группы
+        if group.owner_id != session['client_id']:
+            return jsonify({'error': 'Только владелец может приглашать'}), 403
+        
+        # Находим пользователя по логину
+        target_client = get_client_by_login(db, login)
+        if not target_client:
+            return jsonify({'error': 'Пользователь не найден'}), 404
+        
+        # Приглашаем
+        member = invite_client_to_group(db, group_id, target_client.id)
+        logger.info(f"Client {target_client.id} invited to group {group_id} by {session['client_id']}")
+        return jsonify({'message': 'Приглашение отправлено', 'member_id': member.id})
+    finally:
+        db.close()
+
+
+@app.route('/api/invitations', methods=['GET'])
+@login_required
+def get_invitations():
+    """Возвращает все pending-приглашения для текущего пользователя"""
+    db = SessionLocal()
+    try:
+        invitations = get_pending_invitations(db, session['client_id'])
+        return jsonify({'invitations': invitations})
+    finally:
+        db.close()
+
+
+@app.route('/api/invitations/accept', methods=['POST'])
+@login_required
+def accept_invitation_api():
+    """Принять приглашение в группу"""
+    data = request.get_json()
+    group_id = data.get('group_id')
+    
+    if not group_id:
+        return jsonify({'error': 'Необходимо указать group_id'}), 400
+    
+    db = SessionLocal()
+    try:
+        success = accept_invitation(db, group_id, session['client_id'])
+        if success:
+            return jsonify({'message': 'Приглашение принято'})
+        else:
+            return jsonify({'error': 'Приглашение не найдено или уже обработано'}), 404
+    finally:
+        db.close()
+
+
+# ==================== TOGGLE AI ====================
+
+@app.route('/api/chat/toggle_ai', methods=['POST'])
+@login_required
+def toggle_ai():
+    """Переключить флаг ai_enabled для чата"""
+    data = request.get_json()
+    chat_type = data.get('chat_type')  # 'personal' или 'group'
+    chat_id = data.get('chat_id')
+    
+    if not chat_type or not chat_id:
+        return jsonify({'error': 'Необходимо указать chat_type и chat_id'}), 400
+    
+    if chat_type not in ['personal', 'group']:
+        return jsonify({'error': 'Неверный тип чата'}), 400
+    
+    db = SessionLocal()
+    try:
+        if chat_type == 'personal':
+            chat = get_personal_chat_by_id(db, chat_id)
+            if not chat or chat.owner_id != session['client_id']:
+                return jsonify({'error': 'Чат не найден'}), 404
+            new_value = not chat.ai_enabled
+        else:
+            group = get_group_by_id(db, chat_id)
+            if not group or group.owner_id != session['client_id']:
+                return jsonify({'error': 'Группа не найдена'}), 404
+            new_value = not group.ai_enabled
+        
+        toggle_chat_ai_enabled(db, chat_type, chat_id, new_value)
+        logger.info(f"Toggled ai_enabled to {new_value} for {chat_type} chat {chat_id}")
+        return jsonify({'ai_enabled': new_value})
+    finally:
+        db.close()
+
+
+# ==================== НАБЛЮДАТЕЛЬ ДЛЯ ЛИЧНЫХ ЧАТОВ ====================
+
+@app.route('/api/chat/observe', methods=['POST'])
+@login_required
+def observe_personal_chat():
+    """ИИ-анализатор для личных чатов (режим Наблюдатель)"""
+    data = request.get_json()
+    personal_chat_id = data.get('personal_chat_id')
+    role_prompt = data.get('role_prompt', 'Ты полезный аналитик. Проанализируй диалог.')
+    analysis_type = data.get('analysis_type', 'quick')
+    
+    if not personal_chat_id:
+        return jsonify({'error': 'Необходимо указать personal_chat_id'}), 400
+    
+    db = SessionLocal()
+    try:
+        chat = get_personal_chat_by_id(db, personal_chat_id)
+        if not chat or chat.owner_id != session['client_id']:
+            return jsonify({'error': 'Чат не найден'}), 404
+        
+        # Получаем историю сообщений
+        limit = 10 if analysis_type == 'quick' else 100
+        history = get_personal_chat_history(db, personal_chat_id, session['client_id'], limit=limit)
+        
+        if not history:
+            return jsonify({'result': 'Нет сообщений для анализа'})
+        
+        # Формируем контекст
+        context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
+        
+        # Отправляем в Ollama
+        system_prompt = f"{role_prompt} Анализируй последние {len(history)} сообщений."
+        ai_response = ollama.chat(
+            message=f"{context}\n\nАнализ:",
+            system_prompt=system_prompt
+        )
+        
+        logger.info(f"Observer analysis completed for personal chat {personal_chat_id}")
+        return jsonify({'result': ai_response, 'messages_analyzed': len(history)})
+    finally:
+        db.close()

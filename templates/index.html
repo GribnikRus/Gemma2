@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Gemma Hub - AI Assistant</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
@@ -25,7 +25,7 @@
                     <label for="login-password">Пароль</label>
                     <input type="password" id="login-password" required>
                 </div>
-                <button type="submit" class="btn btn-primary">Войти</button>
+                <button type="submit" class="btn btn-primary full-width">Войти</button>
                 <div id="login-error" class="error-message"></div>
             </form>
             
@@ -38,7 +38,7 @@
                     <label for="register-password">Пароль</label>
                     <input type="password" id="register-password" required minlength="6">
                 </div>
-                <button type="submit" class="btn btn-primary">Зарегистрироваться</button>
+                <button type="submit" class="btn btn-primary full-width">Зарегистрироваться</button>
                 <div id="register-error" class="error-message"></div>
             </form>
         </div>
@@ -46,8 +46,18 @@
 
     <!-- Основной интерфейс -->
     <div id="app-container" class="hidden">
+        <!-- Overlay для мобильного меню -->
+        <div class="sidebar-overlay" id="sidebar-overlay"></div>
+        
+        <!-- Кнопка гамбургер для мобильных -->
+        <div class="hamburger-menu" id="hamburger-menu">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+        
         <!-- Левая панель навигации -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <h1>Gemma Hub</h1>
                 <span id="user-display" class="user-info"></span>
@@ -92,6 +102,14 @@
                     <button class="mode-btn" data-mode="image">🖼️ Анализ фото</button>
                     <button class="mode-btn" data-mode="audio">🎤 Аудио</button>
                     <button class="mode-btn" data-mode="observer" id="observer-mode-btn">👁️ Наблюдатель</button>
+                </div>
+                <!-- Переключатель ИИ -->
+                <div class="ai-toggle-container">
+                    <label class="ai-toggle-switch">
+                        <input type="checkbox" id="ai-enabled-toggle" checked>
+                        <span class="ai-toggle-slider"></span>
+                    </label>
+                    <span style="font-size: 0.75rem; color: var(--text-secondary);">ИИ</span>
                 </div>
             </header>
             
@@ -190,6 +208,15 @@
                 </div>
             </div>
             
+            <!-- Приглашения в группу -->
+            <div class="panel-section">
+                <h3>Пригласить участника</h3>
+                <div class="form-group" style="display: flex; gap: 0.5rem;">
+                    <input type="text" id="invite-login-input" placeholder="Логин пользователя" style="flex: 1;">
+                    <button id="invite-user-btn" class="btn btn-sm btn-primary">Пригласить</button>
+                </div>
+            </div>
+            
             <!-- Панель Наблюдателя (в групповом режиме) -->
             <div class="panel-section observer-panel-fixed" id="observer-panel-fixed">
                 <h3>👁️ Панель Наблюдателя</h3>
@@ -206,6 +233,14 @@
                     <button id="analyze-quick-btn" class="btn btn-sm btn-primary">Анализ</button>
                 </div>
                 <div id="observer-quick-result" class="observer-quick-result hidden"></div>
+            </div>
+            
+            <!-- Входящие приглашения -->
+            <div class="panel-section">
+                <h3>📨 Входящие приглашения</h3>
+                <div id="invitations-list" class="members-list">
+                    <!-- Список приглашений -->
+                </div>
             </div>
         </aside>
     </div>
