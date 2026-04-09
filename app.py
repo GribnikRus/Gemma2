@@ -253,7 +253,8 @@ def get_personal_chat(chat_id: int):
             'chat': {
                 'id': chat.id,
                 'title': chat.title,
-                'created_at': chat.created_at.isoformat()
+                'created_at': chat.created_at.isoformat(),
+                'ai_enabled': chat.ai_enabled
             },
             'messages': [{
                 'id': m.id,
@@ -790,7 +791,8 @@ def get_group(group_id: int):
                 'id': group.id,
                 'name': group.name,
                 'description': group.description,
-                'owner_id': group.owner_id
+                'owner_id': group.owner_id,
+                'ai_enabled': group.ai_enabled
             },
             'members': [{
                 'client_id': m.client_id,
@@ -943,12 +945,14 @@ def get_client_chats():
                 'id': c.id,
                 'title': c.title,
                 'type': 'personal',
+                'ai_enabled': c.ai_enabled,
                 'updated_at': c.updated_at.isoformat() if c.updated_at else None
             } for c in personal_chats],
             'groups': [{
                 'id': g.id,
                 'name': g.name,
                 'type': 'group',
+                'ai_enabled': g.ai_enabled,
                 'created_at': g.created_at.isoformat()
             } for g in groups]
         })
@@ -1083,16 +1087,19 @@ def toggle_ai():
         chat = None
         
         # Ищем чат в зависимости от типа
-        # ИСПРАВЛЕНО: Теперь PersonalChat и ChatGroup импортированы и доступны
+        # Для личных чатов - проверяем owner_id
+        # Для групп - проверяем членство (любой участник может переключать ИИ)
         if chat_type == 'personal':
             chat = db.query(PersonalChat).filter(
                 PersonalChat.id == chat_id,
                 PersonalChat.owner_id == session['client_id']
             ).first()
         elif chat_type == 'group':
+            # Проверяем членство в группе
+            if not is_client_member_of_group(db, session['client_id'], chat_id):
+                return jsonify({'error': 'Нет доступа к группе'}), 403
             chat = db.query(ChatGroup).filter(
-                ChatGroup.id == chat_id,
-                ChatGroup.owner_id == session['client_id']
+                ChatGroup.id == chat_id
             ).first()
             
         if not chat:
