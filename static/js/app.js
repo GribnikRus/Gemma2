@@ -124,6 +124,17 @@ function setupEventListeners() {
     
     document.getElementById('logout-btn').onclick = () => window.location.reload();
     
+    // Создание нового личного чата
+    document.getElementById('new-chat-btn').onclick = async () => {
+        const login = prompt('Введите логин пользователя для создания чата:');
+        if (!login || !login.trim()) return;
+        try {
+            const chat = await apiRequest('/api/chat/personal/create', 'POST', { partner_login: login.trim() });
+            loadChats(); // Обновить список чатов
+            selectChat(chat.id, 'personal'); // Открыть созданный чат
+        } catch(e) { alert(e.message); }
+    };
+    
     // AI Toggle
     document.getElementById('ai-enabled-toggle').onchange = async (e) => {
         if(!state.currentChat) return;
@@ -170,6 +181,7 @@ async function loadChats() {
     renderList('chats-list', state.chats, 'personal');
     renderList('groups-list', state.groups, 'group');
     loadUsers();
+    loadInvitations(); // Загружаем приглашения при загрузке чатов
 }
 
 function renderList(id, items, type) {
@@ -283,10 +295,25 @@ async function loadUsers() {
     try {
         const res = await apiRequest('/api/users/list');
         state.usersStatus = res.users;
-        document.getElementById('users-list-container').innerHTML = res.users
-            .filter(u => u.is_online && u.login !== state.currentUser.login)
-            .map(u => `<li style="padding:5px; display:flex; align-items:center; gap:5px;"><span style="width:8px; height:8px; background:#0f0; border-radius:50%;"></span> ${u.login}</li>`).join('');
-    } catch(e) {}
+        const container = document.getElementById('users-list-container');
+        if (!container) return;
+        
+        const onlineUsers = res.users.filter(u => u.is_online && u.login !== state.currentUser.login);
+        
+        if (onlineUsers.length === 0) {
+            container.innerHTML = '<li style="padding:5px; color:#707579;">Нет пользователей онлайн</li>';
+        } else {
+            container.innerHTML = onlineUsers.map(u => 
+                `<li style="padding:5px; display:flex; align-items:center; gap:8px;">
+                    <span style="width:10px; height:10px; background:#0f0; border-radius:50%; box-shadow:0 0 5px #0f0;"></span>
+                    <span>${u.login}</span>
+                </li>`
+            ).join('');
+        }
+    } catch(e) {
+        console.error('Ошибка загрузки пользователей:', e);
+        document.getElementById('users-list-container').innerHTML = '<li style="color:red;">Ошибка загрузки</li>';
+    }
 }
 
 async function runObserverAnalysis() {
@@ -340,19 +367,24 @@ async function loadInvitations() {
         document.querySelectorAll('.accept-invite-btn').forEach(btn => {
             btn.onclick = async () => {
                 const groupId = btn.dataset.groupId;
-                try {
-                    await apiRequest('/api/invitations/accept', 'POST', { group_id: parseInt(groupId) });
-                    alert('Приглашение принято!');
-                    loadInvitations(); // Обновить список
-                    loadChats(); // Обновить список чатов/групп
-                } catch(e) {
-                    alert(e.message);
-                }
+                await acceptInvite(parseInt(groupId));
             };
         });
     } catch(e) {
         console.error('Ошибка загрузки приглашений:', e);
         document.getElementById('invitations-list').innerHTML = '<p style="color:red;">Ошибка загрузки</p>';
+    }
+}
+
+// Принятие приглашения
+async function acceptInvite(groupId) {
+    try {
+        await apiRequest('/api/invitations/accept', 'POST', { group_id: groupId });
+        alert('Приглашение принято!');
+        loadInvitations(); // Обновить список приглашений
+        loadChats(); // Обновить список чатов/групп
+    } catch(e) {
+        alert(e.message);
     }
 }
 

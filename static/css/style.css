@@ -37,6 +37,31 @@ body { background: var(--bg-color); height: 100vh; overflow: hidden; }
 .chat-item:hover, .group-item:hover { background: #eef2f5; }
 .chat-item.active { background: #3390ec20; border-left: 3px solid var(--primary); }
 
+/* FAB Button for New Chat */
+.fab {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: white;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+    z-index: 10;
+}
+.fab:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 15px rgba(0,0,0,0.4);
+}
+.fab:active {
+    transform: scale(0.95);
+}
+
 /* Right Panel (Info & Observer) */
 .right-panel { 
     width: 300px; 

@@ -1,7 +1,31 @@
 ```
-__pycache__/
-*.pyc
-```
-.venv/
+# Build artifacts
+dist/
+build/
+*.min.js
+*.min.css
+*.bundle.js
+*.map
+
+# Dependencies
+node_modules/
+
+# Logs and temp files
 *.log
-*.pid
+*.tmp
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+```
