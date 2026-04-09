@@ -3,11 +3,16 @@
 Используется таблица clients для веб-авторизации.
 Таблица users зарезервирована для Telegram-бота.
 """
+import logging
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Table
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 from sqlalchemy.sql import func
 import uuid
-from config import DATABASE_URL
+from config import DATABASE_URL, LOG_FORMAT, LOG_LEVEL
+
+# Настройка логирования
+logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, LOG_LEVEL))
+logger = logging.getLogger("db")
 
 # Настройка движка и сессии
 engine = create_engine(DATABASE_URL)
@@ -125,7 +130,9 @@ class ObserverAnalysis(Base):
 
 def init_db():
     """Инициализация таблиц БД"""
+    logger.info("Initializing database tables")
     Base.metadata.create_all(bind=engine)
+    logger.info("Database initialization completed")
 
 def get_db():
     db = SessionLocal()
@@ -135,16 +142,28 @@ def get_db():
         db.close()
 
 def get_client_by_login(db, login: str):
-    return db.query(Client).filter(Client.login == login).first()
+    client = db.query(Client).filter(Client.login == login).first()
+    if client:
+        logger.debug(f"Client found by login: {login}")
+    else:
+        logger.debug(f"Client not found by login: {login}")
+    return client
 
 def get_client_by_id(db, client_id: int):
-    return db.query(Client).filter(Client.id == client_id).first()
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if client:
+        logger.debug(f"Client found by id: {client_id}")
+    else:
+        logger.debug(f"Client not found by id: {client_id}")
+    return client
 
 def create_client(db, login: str, password_hash: str):
+    logger.info(f"Creating new client: {login}")
     db_client = Client(login=login, password_hash=password_hash)
     db.add(db_client)
     db.commit()
     db.refresh(db_client)
+    logger.info(f"Client created successfully: {login} (id={db_client.id})")
     return db_client
 
 def is_client_member_of_group(db, client_id: int, group_id: int):
@@ -153,13 +172,17 @@ def is_client_member_of_group(db, client_id: int, group_id: int):
         GroupMember.group_id == group_id,
         GroupMember.status == 'accepted'
     ).first()
-    return member is not None
+    result = member is not None
+    logger.debug(f"Client {client_id} membership in group {group_id}: {result}")
+    return result
 
 def get_group_members(db, group_id: int):
-    return db.query(GroupMember).join(Client).filter(
+    members = db.query(GroupMember).join(Client).filter(
         GroupMember.group_id == group_id,
         GroupMember.status == 'accepted'
     ).all()
+    logger.debug(f"Retrieved {len(members)} members for group {group_id}")
+    return members
 
 def invite_client_to_group(db, group_id: int, target_client_id: int):
     # Проверка на дубликат
@@ -169,12 +192,14 @@ def invite_client_to_group(db, group_id: int, target_client_id: int):
     ).first()
     
     if existing:
+        logger.debug(f"Invite already exists for client {target_client_id} in group {group_id}")
         return existing
         
     new_member = GroupMember(group_id=group_id, client_id=target_client_id, status='pending')
     db.add(new_member)
     db.commit()
     db.refresh(new_member)
+    logger.info(f"Client {target_client_id} invited to group {group_id}")
     return new_member
 
 def accept_group_invite(db, group_id: int, client_id: int):
@@ -188,9 +213,13 @@ def accept_group_invite(db, group_id: int, client_id: int):
         member.status = 'accepted'
         db.commit()
         db.refresh(member)
+        logger.info(f"Client {client_id} accepted invite to group {group_id}")
+    else:
+        logger.warning(f"No pending invite found for client {client_id} in group {group_id}")
     return member
 
 def create_group(db, name: str, owner_id: int, description: str = None):
+    logger.info(f"Creating new group: {name} by owner {owner_id}")
     group = ChatGroup(name=name, owner_id=owner_id, description=description)
     db.add(group)
     db.flush()
@@ -200,25 +229,35 @@ def create_group(db, name: str, owner_id: int, description: str = None):
     db.add(owner_member)
     db.commit()
     db.refresh(group)
+    logger.info(f"Group created successfully: {name} (id={group.id})")
     return group
 
 def create_personal_chat(db, client_id: int, title: str = "Новый чат"):
+    logger.info(f"Creating personal chat for client {client_id}: {title}")
     chat = PersonalChat(owner_id=client_id, title=title)
     db.add(chat)
     db.commit()
     db.refresh(chat)
+    logger.info(f"Personal chat created: id={chat.id}, title={title}")
     return chat
 
 def get_personal_chat(db, chat_id: int, client_id: int):
-    return db.query(PersonalChat).filter(
+    chat = db.query(PersonalChat).filter(
         PersonalChat.id == chat_id,
         PersonalChat.owner_id == client_id
     ).first()
+    if chat:
+        logger.debug(f"Personal chat {chat_id} retrieved for client {client_id}")
+    else:
+        logger.debug(f"Personal chat {chat_id} not found for client {client_id}")
+    return chat
 
 def get_client_personal_chats(db, client_id: int):
-    return db.query(PersonalChat).filter(
+    chats = db.query(PersonalChat).filter(
         PersonalChat.owner_id == client_id
     ).order_by(PersonalChat.updated_at.desc()).all()
+    logger.debug(f"Retrieved {len(chats)} personal chats for client {client_id}")
+    return chats
 
 def get_client_groups(db, client_id: int):
     memberships = db.query(GroupMember).filter(
@@ -229,16 +268,19 @@ def get_client_groups(db, client_id: int):
     group_ids = [m.group_id for m in memberships]
     if not group_ids:
         return []
-    return db.query(ChatGroup).filter(ChatGroup.id.in_(group_ids)).all()
+    groups = db.query(ChatGroup).filter(ChatGroup.id.in_(group_ids)).all()
+    logger.debug(f"Retrieved {len(groups)} groups for client {client_id}")
+    return groups
 
 def get_group_history(db, group_id: int, client_id: int, limit: int = 50):
     if not is_client_member_of_group(db, client_id, group_id):
+        logger.warning(f"Client {client_id} not member of group {group_id}, denying history access")
         return []
     
     messages = db.query(ChatMessage).filter(
         ChatMessage.group_id == group_id
     ).order_by(ChatMessage.created_at.asc()).limit(limit).all()
-    
+    logger.debug(f"Retrieved {len(messages)} messages for group {group_id}")
     return messages
 
 def get_personal_chat_history(db, chat_id: int, client_id: int, limit: int = 50):
@@ -249,12 +291,15 @@ def get_personal_chat_history(db, chat_id: int, client_id: int, limit: int = 50)
     messages = db.query(ChatMessage).filter(
         ChatMessage.personal_chat_id == chat_id
     ).order_by(ChatMessage.created_at.asc()).limit(limit).all()
-    
+    logger.debug(f"Retrieved {len(messages)} messages for personal chat {chat_id}")
     return messages
 
 def add_message(db, content: str, sender_type: str, sender_id: int = None, 
                 personal_chat_id: int = None, group_id: int = None, 
                 message_type: str = 'text'):
+    chat_info = f"personal_chat_id={personal_chat_id}" if personal_chat_id else f"group_id={group_id}"
+    logger.info(f"Adding message to chat ({chat_info}) by {sender_type} (sender_id={sender_id})")
+    
     message = ChatMessage(
         content=content,
         sender_type=sender_type, # 'client' or 'ai'
@@ -273,9 +318,11 @@ def add_message(db, content: str, sender_type: str, sender_id: int = None,
     
     db.commit()
     db.refresh(message)
+    logger.info(f"Message added to chat_id={personal_chat_id or group_id} by client_id={sender_id or 'AI'}")
     return message
 
 def create_task_history(db, client_id: int, task_type: str, input_data: str = None):
+    logger.info(f"Creating task history for client {client_id}, type={task_type}")
     task = TaskHistory(
         client_id=client_id,
         task_type=task_type,
@@ -285,6 +332,7 @@ def create_task_history(db, client_id: int, task_type: str, input_data: str = No
     db.add(task)
     db.commit()
     db.refresh(task)
+    logger.info(f"Task history created: id={task.id}")
     return task
 
 def update_task_history(db, task_id: int, result: str = None, status: str = 'completed'):
@@ -294,9 +342,13 @@ def update_task_history(db, task_id: int, result: str = None, status: str = 'com
         task.status = status
         db.commit()
         db.refresh(task)
+        logger.info(f"Task {task_id} updated with status={status}")
+    else:
+        logger.error(f"Task {task_id} not found for update")
     return task
 
 def create_observer_session(db, group_id: int, client_id: int, role_prompt: str, analysis_type: str = 'quick'):
+    logger.info(f"Creating observer session for group {group_id} by client {client_id}")
     session = ObserverSession(
         group_id=group_id,
         creator_id=client_id,
@@ -306,9 +358,11 @@ def create_observer_session(db, group_id: int, client_id: int, role_prompt: str,
     db.add(session)
     db.commit()
     db.refresh(session)
+    logger.info(f"Observer session created: id={session.id}")
     return session
 
 def add_observer_analysis(db, session_id: int, analysis_content: str, messages_analyzed: int = 0):
+    logger.info(f"Adding observer analysis for session {session_id}")
     analysis = ObserverAnalysis(
         session_id=session_id,
         analysis_text=analysis_content,
@@ -317,4 +371,5 @@ def add_observer_analysis(db, session_id: int, analysis_content: str, messages_a
     db.add(analysis)
     db.commit()
     db.refresh(analysis)
+    logger.info(f"Observer analysis added: id={analysis.id}")
     return analysis

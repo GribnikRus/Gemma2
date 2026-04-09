@@ -3,6 +3,7 @@ Flask приложение gemma-hub.
 Основной сервер с API endpoints для всех режимов работы.
 """
 import os
+import logging
 import base64
 import hashlib
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
@@ -10,7 +11,7 @@ from werkzeug.utils import secure_filename
 from functools import wraps
 from datetime import datetime
 
-from config import SECRET_KEY, UPLOAD_FOLDER, MAX_CONTENT_LENGTH
+from config import SECRET_KEY, UPLOAD_FOLDER, MAX_CONTENT_LENGTH, LOG_FORMAT, LOG_LEVEL
 from db import (
     init_db, get_db, SessionLocal,
     get_client_by_login, get_client_by_id,
@@ -24,13 +25,17 @@ from db import (
 )
 from ollama_client import OllamaClient
 
+# Настройка логирования
+logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, LOG_LEVEL))
+logger = logging.getLogger("app")
+
 # Инициализация Flask
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
-# Создаем папку для загрузок если не существует
+# Создаем папку для загрузок если существует
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Инициализируем БД
@@ -85,17 +90,23 @@ def index():
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     """Регистрация нового клиента"""
+    client_ip = request.remote_addr
+    logger.info(f"POST /api/auth/register from {client_ip}")
+    
     data = request.get_json()
     login = data.get('login', '').strip()
     password = data.get('password', '')
     
     if not login or not password:
+        logger.warning(f"Registration failed: missing login or password from {client_ip}")
         return jsonify({'error': 'Логин и пароль обязательны'}), 400
     
     if len(login) < 3:
+        logger.warning(f"Registration failed: login too short from {client_ip}")
         return jsonify({'error': 'Логин должен быть не менее 3 символов'}), 400
     
     if len(password) < 6:
+        logger.warning(f"Registration failed: password too short from {client_ip}")
         return jsonify({'error': 'Пароль должен быть не менее 6 символов'}), 400
     
     db = SessionLocal()
@@ -103,6 +114,7 @@ def register():
         # Проверяем существование
         existing = get_client_by_login(db, login)
         if existing:
+            logger.warning(f"Registration failed: user {login} already exists from {client_ip}")
             return jsonify({'error': 'Пользователь уже существует'}), 409
         
         # Хешируем пароль через SHA-256
@@ -117,6 +129,7 @@ def register():
         db.commit()
         db.refresh(new_client)
         
+        logger.info(f"User registered successfully: {login} (id={new_client.id}) from {client_ip}")
         return jsonify({
             'message': 'Регистрация успешна',
             'client_id': new_client.id,
@@ -124,6 +137,7 @@ def register():
         }), 201
     except Exception as e:
         db.rollback()
+        logger.error(f"Registration error for {login}: {str(e)}")
         if "unique constraint" in str(e).lower():
             return jsonify({'error': 'Пользователь уже существует'}), 409
         return jsonify({'error': str(e)}), 500
@@ -134,6 +148,9 @@ def register():
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     """Вход в систему"""
+    client_ip = request.remote_addr
+    logger.info(f"POST /api/auth/login from {client_ip}")
+    
     data = request.get_json()
     login = data.get('login', '').strip()
     password = data.get('password', '')
@@ -144,17 +161,22 @@ def login():
         
         # Используем нашу SHA-256 проверку
         if not client or not verify_password_sha256(password, client.password_hash):
+            logger.warning(f"Login failed for {login} from {client_ip}")
             return jsonify({'error': 'Неверный логин или пароль'}), 401
         
         # Создаем сессию
         session['client_id'] = client.id
         session['login'] = client.login
         
+        logger.info(f"Login successful: {login} (id={client.id}) from {client_ip}")
         return jsonify({
             'message': 'Вход успешен',
             'client_id': client.id,
             'login': client.login
         })
+    except Exception as e:
+        logger.error(f"Login error for {login}: {str(e)}")
+        raise
     finally:
         db.close()
 
@@ -162,6 +184,10 @@ def login():
 @app.route('/api/auth/logout', methods=['POST'])
 def logout():
     """Выход из системы"""
+    client_ip = request.remote_addr
+    client_id = session.get('client_id')
+    logger.info(f"POST /api/auth/logout from {client_ip} (client_id={client_id})")
+    
     session.clear()
     return jsonify({'message': 'Выход успешен'})
 
@@ -235,12 +261,17 @@ def get_personal_chat(chat_id: int):
 @login_required
 def send_message():
     """Отправить сообщение в личный или групповой чат"""
+    client_ip = request.remote_addr
+    client_id = session.get('client_id')
+    logger.info(f"POST /api/chat/send from {client_ip} (client_id={client_id})")
+    
     data = request.get_json()
     content = data.get('content', '').strip()
     personal_chat_id = data.get('personal_chat_id')
     group_id = data.get('group_id')
     
     if not content:
+        logger.warning(f"Empty message content from {client_ip}")
         return jsonify({'error': 'Сообщение не может быть пустым'}), 400
     
     db = SessionLocal()
@@ -250,6 +281,7 @@ def send_message():
             # Личный чат
             chat = get_personal_chat_from_db(db, personal_chat_id, session['client_id'])
             if not chat:
+                logger.warning(f"Personal chat {personal_chat_id} not found for client {client_id}")
                 return jsonify({'error': 'Чат не найден'}), 404
             
             # Добавляем сообщение пользователя
@@ -274,6 +306,7 @@ def send_message():
                 personal_chat_id=personal_chat_id, message_type='text'
             )
             
+            logger.info(f"Message sent to personal chat {personal_chat_id}, status=200")
             return jsonify({
                 'user_message': {
                     'id': user_msg.id,
@@ -292,6 +325,7 @@ def send_message():
         elif group_id:
             # Групповой чат
             if not is_client_member_of_group(db, session['client_id'], group_id):
+                logger.warning(f"Client {client_id} not member of group {group_id}")
                 return jsonify({'error': 'Нет доступа к группе'}), 403
             
             # Добавляем сообщение пользователя
@@ -316,6 +350,7 @@ def send_message():
                 group_id=group_id, message_type='text'
             )
             
+            logger.info(f"Message sent to group {group_id}, status=200")
             return jsonify({
                 'user_message': {
                     'id': user_msg.id,
@@ -331,6 +366,7 @@ def send_message():
                 }
             })
         else:
+            logger.warning(f"No chat specified in request from {client_ip}")
             return jsonify({'error': 'Не указан чат'}), 400
     
     finally:
@@ -343,11 +379,17 @@ def send_message():
 @login_required
 def upload_image():
     """Загрузка и анализ изображения"""
+    client_ip = request.remote_addr
+    client_id = session.get('client_id')
+    logger.info(f"POST /api/upload/image from {client_ip} (client_id={client_id})")
+    
     if 'file' not in request.files:
+        logger.warning(f"No file in request from {client_ip}")
         return jsonify({'error': 'Файл не найден'}), 400
     
     file = request.files['file']
     if file.filename == '':
+        logger.warning(f"Empty filename from {client_ip}")
         return jsonify({'error': 'Файл не выбран'}), 400
     
     # Сохраняем файл
@@ -356,10 +398,12 @@ def upload_image():
     unique_filename = f"{timestamp}_{filename}"
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
     file.save(filepath)
+    logger.debug(f"Image saved to {filepath}")
     
     # Кодируем в base64 для отправки в Ollama
     with open(filepath, 'rb') as f:
         image_base64 = base64.b64encode(f.read()).decode('utf-8')
+    logger.debug(f"Image encoded to base64 ({len(image_base64)} chars)")
     
     db = SessionLocal()
     try:
@@ -375,15 +419,20 @@ def upload_image():
         try:
             response = ollama.analyze_image(image_base64, "Опиши изображение")
             update_task_history(db, task.id, result=response, status='completed')
+            logger.info(f"Image analysis completed for task {task.id}, status=200")
             return jsonify({
                 'task_id': task.id,
                 'status': 'completed',
                 'result': response
             })
         except Exception as e:
+            logger.error(f"Image analysis failed for task {task.id}: {str(e)}")
             update_task_history(db, task.id, result=str(e), status='failed')
             return jsonify({'error': f'Ошибка анализа: {str(e)}'}), 500
     
+    except Exception as e:
+        logger.error(f"Error in upload_image: {str(e)}")
+        return jsonify({'error': str(e)}), 500
     finally:
         db.close()
 
