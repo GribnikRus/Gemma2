@@ -213,6 +213,8 @@ async function selectChat(id, type) {
             document.getElementById('members-list').innerHTML = data.members.map(m => 
                 `<div class="chat-item" style="padding:5px;"><div class="avatar" style="width:25px;height:25px;font-size:0.7rem">${m.login[0]}</div> ${m.login}</div>`
             ).join('');
+            // Загружаем приглашения при открытии группы
+            loadInvitations();
         } else {
             membersSec.classList.add('hidden');
         }
@@ -312,6 +314,45 @@ async function runObserverAnalysis() {
         resText.textContent = res.analysis || res.result;
     } catch(e) {
         resText.textContent = 'Ошибка: ' + e.message;
+    }
+}
+
+// Загрузка приглашений
+async function loadInvitations() {
+    try {
+        const data = await apiRequest('/api/invitations');
+        const invitations = data.invitations || [];
+        const container = document.getElementById('invitations-list');
+        
+        if (invitations.length === 0) {
+            container.innerHTML = '<p style="color:#707579;font-size:0.9rem;">Нет входящих приглашений</p>';
+            return;
+        }
+        
+        container.innerHTML = invitations.map(inv => `
+            <div class="chat-item" style="padding:5px;display:flex;justify-content:space-between;align-items:center;">
+                <span>Группа: ${inv.group_name}</span>
+                <button class="btn-sm accept-invite-btn" data-group-id="${inv.group_id}" style="background:#3390ec;color:white;border:none;padding:5px 10px;border-radius:4px;">Принять</button>
+            </div>
+        `).join('');
+        
+        // Вешаем обработчики на кнопки "Принять"
+        document.querySelectorAll('.accept-invite-btn').forEach(btn => {
+            btn.onclick = async () => {
+                const groupId = btn.dataset.groupId;
+                try {
+                    await apiRequest('/api/invitations/accept', 'POST', { group_id: parseInt(groupId) });
+                    alert('Приглашение принято!');
+                    loadInvitations(); // Обновить список
+                    loadChats(); // Обновить список чатов/групп
+                } catch(e) {
+                    alert(e.message);
+                }
+            };
+        });
+    } catch(e) {
+        console.error('Ошибка загрузки приглашений:', e);
+        document.getElementById('invitations-list').innerHTML = '<p style="color:red;">Ошибка загрузки</p>';
     }
 }
 
