@@ -9,7 +9,7 @@ import hashlib
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from werkzeug.utils import secure_filename
 from functools import wraps
-from datetime import datetime
+from datetime import datetime, timezone
 
 from config import SECRET_KEY, UPLOAD_FOLDER, MAX_CONTENT_LENGTH, LOG_FORMAT, LOG_LEVEL
 # ИСПРАВЛЕНО: Добавлены PersonalChat и ChatGroup в импорт
@@ -962,6 +962,7 @@ def get_client_chats():
 
 # ==================== СТАТУС ПОЛЬЗОВАТЕЛЕЙ ====================
 
+
 @app.route('/api/users/list', methods=['GET'])
 @login_required
 def get_users_list():
@@ -970,18 +971,22 @@ def get_users_list():
     try:
         clients = db.query(Client).all()
         users_data = []
-        now = datetime.now(datetime.timezone.utc)
+        # Получаем текущее время UTC (с часовым поясом)
+        now = datetime.now(timezone.utc)
         
         for c in clients:
             is_online = False
             if c.last_seen:
-                # Приводим last_seen к naive (без timezone), если оно aware, 
-                # или наоборот, чтобы сравнение работало
                 last = c.last_seen
-                if last.tzinfo is not None:
-                    last = last.replace(tzinfo=None)
                 
+                # ХИТРОСТЬ: Если время из БД "без пояса" (naive), считаем что оно UTC
+                if last.tzinfo is None:
+                    last = last.replace(tzinfo=timezone.utc)
+                
+                # Если время из БД "с поясом" (aware), то вычитаем напрямую
+                # Теперь оба времени совместимы
                 diff = (now - last).total_seconds()
+                
                 if diff < 300: # 5 минут
                     is_online = True
             
