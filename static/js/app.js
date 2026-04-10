@@ -4,8 +4,99 @@ const state = {
     currentChatType: 'personal',
     chats: [],
     groups: [],
-    usersStatus: []
+    usersStatus: [],
+    messagePollingInterval: null,
+    lastMessageId: null,
+    originalTitle: document.title
 };
+
+// --- Polling Functions ---
+function startMessagePolling(chatId, chatType) {
+    // Останавливаем предыдущий polling если был
+    stopMessagePolling();
+    
+    // Сбрасываем lastMessageId при открытии нового чата
+    state.lastMessageId = null;
+    
+    // Запускаем polling каждые 3 секунды
+    state.messagePollingInterval = setInterval(async () => {
+        try {
+            const url = `/api/chat/${chatId}/history?type=${chatType}&last_message_id=${state.lastMessageId || ''}&limit=50`;
+            const res = await fetch(url, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!res.ok) return;
+            
+            const data = await res.json();
+            const newMessages = data.messages || [];
+            
+            if (newMessages.length > 0) {
+                // Обновляем lastMessageId
+                state.lastMessageId = newMessages[newMessages.length - 1].id;
+                
+                // Добавляем новые сообщения в DOM
+                appendNewMessages(newMessages);
+                
+                // Уведомление если окно не активно
+                if (document.hidden || window.parent !== window.top) {
+                    document.title = '🔔 Новое сообщение!';
+                    setTimeout(() => { document.title = state.originalTitle; }, 3000);
+                }
+            }
+        } catch (e) {
+            console.error('Polling error:', e);
+        }
+    }, 3000);
+}
+
+function stopMessagePolling() {
+    if (state.messagePollingInterval) {
+        clearInterval(state.messagePollingInterval);
+        state.messagePollingInterval = null;
+    }
+    state.lastMessageId = null;
+    document.title = state.originalTitle;
+}
+
+function appendNewMessages(messages) {
+    const container = document.getElementById('messages-container');
+    if (!container || messages.length === 0) return;
+    
+    // Проверяем, находится ли пользователь внизу чата (чтобы решить, скроллить ли)
+    const isScrolledToBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 50;
+    
+    messages.forEach(m => {
+        // Проверяем, нет ли уже такого сообщения в DOM
+        const existingMsg = document.querySelector(`.message[data-msg-id="${m.id}"]`);
+        if (existingMsg) return;
+        
+        const isUser = m.sender_type === 'client';
+        let senderHtml = '';
+        
+        // Логика имен для групповых чатов
+        if (state.currentChatType === 'group' && !isUser && m.sender_name) {
+            senderHtml = `<span class="msg-sender" style="color: #3390ec; font-weight: bold;">${m.sender_name}</span>`;
+        } else if (!isUser) {
+            senderHtml = `<span class="msg-sender" style="color: #e53935; font-weight: bold;">Gemma AI</span>`;
+        }
+        
+        const msgHtml = `
+        <div class="message ${isUser ? 'user' : 'ai'}" data-msg-id="${m.id}">
+            ${senderHtml}
+            <div class="msg-content">${m.content}</div>
+            <div class="msg-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+        </div>`;
+        
+        container.insertAdjacentHTML('beforeend', msgHtml);
+    });
+    
+    // Скроллим вниз только если пользователь был внизу
+    if (isScrolledToBottom) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
 
 // --- API Helpers ---
 async function apiRequest(endpoint, method = 'GET', data = null) {
@@ -122,7 +213,10 @@ function setupEventListeners() {
         };
     });
     
-    document.getElementById('logout-btn').onclick = () => window.location.reload();
+    document.getElementById('logout-btn').onclick = () => {
+        stopMessagePolling();
+        window.location.reload();
+    };
     
     // Создание нового личного чата
     document.getElementById('new-chat-btn').onclick = async () => {
@@ -197,6 +291,9 @@ function renderList(id, items, type) {
 }
 
 async function selectChat(id, type) {
+    // Останавливаем polling для предыдущего чата
+    stopMessagePolling();
+    
     state.currentChatType = type;
     try {
         const data = await apiRequest(type === 'personal' ? `/api/chat/personal/${id}` : `/api/group/${id}`);
@@ -213,6 +310,14 @@ async function selectChat(id, type) {
         // ============================================================
 
         renderMessages(data.messages);
+        
+        // Устанавливаем lastMessageId на последнее сообщение из истории
+        if (data.messages && data.messages.length > 0) {
+            state.lastMessageId = data.messages[data.messages.length - 1].id;
+        }
+        
+        // Запускаем polling для нового чата
+        startMessagePolling(id, type);
         
         // Мобильное меню закрыть
         document.getElementById('sidebar').classList.remove('open');
