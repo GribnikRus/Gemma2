@@ -482,58 +482,26 @@ async function sendMessage() {
     const txt = inp.value.trim();
     if (!txt || !state.currentChat) return;
 
-    const c = document.getElementById('messages-container');
-
-    // 1. Мгновенное отображение СВОЕГО сообщения с именем (для группы)
-    let senderHtml = '';
-    if (state.currentChatType === 'group') {
-        // Показываем свое имя сразу
-        senderHtml = `<span class="msg-sender" style="color: #3390ec; font-weight: bold;">${state.currentUser.login}</span>`;
-    }
-
-    // Рисуем сообщение пользователя
-    c.innerHTML += `
-        <div class="message user">
-            ${senderHtml}
-            <div class="msg-content">${escapeHtml(txt)}</div>
-            <div class="msg-time">...</div>
-        </div>`;
-    
+    // Очищаем поле ввода сразу
     inp.value = '';
-    c.scrollTop = c.scrollHeight;
 
     try {
-        const res = await apiRequest('/api/chat/send', 'POST', {
-            content: txt,
-            personal_chat_id: state.currentChatType === 'personal' ? state.currentChat.id : null,
-            group_id: state.currentChatType === 'group' ? state.currentChat.id : null
-        });
+        // Отправляем сообщение через WebSocket
+        const sent = sendMessageViaSocket(
+            txt,
+            state.currentChatType === 'personal' ? state.currentChat.id : null,
+            state.currentChatType === 'group' ? state.currentChat.id : null
+        );
 
-        // 2. Если пришел ответ от сервера (подтверждение или сообщение ИИ)
-        // Для группового чата лучше просто обновить последнее сообщение или перерисовать, 
-        // но так как сервер возвращает то же самое, мы можем просто обновить время.
-        
-        // Если есть ответ ИИ - рисуем его
-        if (res.ai_message) {
-            const aiSenderHtml = `<span class="msg-sender" style="color: #e53935; font-weight: bold;">Gemma AI</span>`;
-            c.innerHTML += `
-                <div class="message ai">
-                    ${aiSenderHtml}
-                    <div class="msg-content">${escapeHtml(res.ai_message.content)}</div>
-                    <div class="msg-time">${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
-                </div>`;
-            c.scrollTop = c.scrollHeight;
-        } else {
-            // Если ИИ молчит (выключен), просто обновим время у последнего сообщения
-            const lastMsg = c.lastElementChild;
-            if (lastMsg) {
-                lastMsg.querySelector('.msg-time').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-            }
+        if (!sent) {
+            throw new Error('WebSocket не подключен');
         }
+
+        // Сообщение будет отображено через socket.on('new_message', ...)
+        // после подтверждения от сервера
 
     } catch(e) { 
         alert('Ошибка отправки: ' + e.message); 
-        // В случае ошибки можно удалить последнее сообщение из DOM, но пока оставим так
     }
 }
 
