@@ -21,4 +21,4 @@ RUN mkdir -p /app/uploads
 EXPOSE 5002
 
 # Запускаем приложение через eventlet для WebSocket поддержки
-CMD ["python", "-m", "eventlet", "-w", "app:app", "--bind", "0.0.0.0:5002"]
+CMD ["python", "app.py"]
