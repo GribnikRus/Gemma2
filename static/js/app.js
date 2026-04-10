@@ -7,8 +7,112 @@ const state = {
     usersStatus: [],
     messagePollingInterval: null,
     lastMessageId: null,
-    originalTitle: document.title
+    originalTitle: document.title,
+    socket: null  // WebSocket соединение
 };
+
+// --- WebSocket Functions ---
+function initSocket() {
+    // Инициализируем Socket.IO соединение
+    state.socket = io();
+    
+    state.socket.on('connect', () => {
+        console.log('WebSocket connected');
+    });
+    
+    state.socket.on('disconnect', () => {
+        console.log('WebSocket disconnected');
+    });
+    
+    state.socket.on('new_message', (data) => {
+        console.log('New message received via WebSocket:', data);
+        
+        // Проверяем, относится ли сообщение к текущему открытому чату
+        const isGroupMatch = data.group_id && state.currentChatType === 'group' && state.currentChat?.id === data.group_id;
+        const isPersonalMatch = data.personal_chat_id && state.currentChatType === 'personal' && state.currentChat?.id === data.personal_chat_id;
+        
+        if (isGroupMatch || isPersonalMatch) {
+            // Добавляем сообщение в текущий чат
+            renderSingleMessage(data);
+        } else {
+            // Если чат не открыт, показываем уведомление
+            showToast(`Новое сообщение в ${data.chat_name || 'чате'}`);
+            document.title = '🔔 Новое сообщение!';
+            setTimeout(() => { document.title = state.originalTitle; }, 3000);
+        }
+    });
+    
+    state.socket.on('joined_group', (data) => {
+        console.log('Joined group room:', data.group_id);
+    });
+    
+    state.socket.on('joined_personal', (data) => {
+        console.log('Joined personal chat room:', data.personal_chat_id);
+    });
+    
+    state.socket.on('error', (data) => {
+        console.error('WebSocket error:', data.message);
+    });
+}
+
+function joinGroupRoom(groupId) {
+    if (state.socket && state.socket.connected) {
+        state.socket.emit('join_group', { group_id: groupId });
+    }
+}
+
+function joinPersonalRoom(personalChatId) {
+    if (state.socket && state.socket.connected) {
+        state.socket.emit('join_personal', { personal_chat_id: personalChatId });
+    }
+}
+
+function sendMessageViaSocket(content, personalChatId, groupId) {
+    if (state.socket && state.socket.connected) {
+        state.socket.emit('send_message', {
+            content: content,
+            personal_chat_id: personalChatId,
+            group_id: groupId
+        });
+        return true;
+    }
+    return false;
+}
+
+function renderSingleMessage(m) {
+    const container = document.getElementById('messages-container');
+    if (!container) return;
+    
+    // Проверяем, нет ли уже такого сообщения в DOM
+    const existingMsg = document.querySelector(`.message[data-msg-id="${m.id}"]`);
+    if (existingMsg) return;
+    
+    const isUser = m.sender_type === 'client' && m.sender_id === state.currentUser?.client_id;
+    let senderHtml = '';
+    
+    // Логика имен для групповых чатов
+    if (state.currentChatType === 'group' && !isUser && m.sender_name) {
+        senderHtml = `<span class="msg-sender" style="color: #3390ec; font-weight: bold;">${m.sender_name}</span>`;
+    } else if (!isUser && m.sender_type === 'ai') {
+        senderHtml = `<span class="msg-sender" style="color: #e53935; font-weight: bold;">Gemma AI</span>`;
+    }
+    
+    const msgHtml = `
+    <div class="message ${isUser ? 'user' : 'ai'}" data-msg-id="${m.id}">
+        ${senderHtml}
+        <div class="msg-content">${escapeHtml(m.content)}</div>
+        <div class="msg-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+    </div>`;
+    
+    container.insertAdjacentHTML('beforeend', msgHtml);
+    container.scrollTop = container.scrollHeight;
+}
+
+function showToast(message) {
+    // Простая реализация уведомления
+    console.log('Toast:', message);
+    // Можно добавить визуальное отображение тоста
+}
 
 // --- Polling Functions ---
 function startMessagePolling(chatId, chatType) {
@@ -18,7 +122,7 @@ function startMessagePolling(chatId, chatType) {
     // Сбрасываем lastMessageId при открытии нового чата
     state.lastMessageId = null;
     
-    // Запускаем polling каждые 3 секунды
+    // Запускаем polling каждые 3 секунды (как fallback)
     state.messagePollingInterval = setInterval(async () => {
         try {
             const url = `/api/chat/${chatId}/history?type=${chatType}&last_message_id=${state.lastMessageId || ''}&limit=50`;

@@ -1,13 +1,19 @@
 ```
+# Dependencies
+venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# Logs and temp files
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Logs
 *.log
-*.tmp
-.venv/
 
 # Environment
 .env
@@ -20,13 +26,24 @@ __pycache__/
 *.swp
 *.swo
 
-# Dependencies
-venv/
-.venv/
-node_modules/
+# OS
+.DS_Store
+Thumbs.db
 
-# Build artifacts
-dist/
-build/
-target/
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+
+# Docker (if not intended to be version controlled beyond initial setup)
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.zip
+*.gz
 ```

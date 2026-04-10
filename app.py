@@ -10,6 +10,7 @@ from flask import Flask, render_template, request, jsonify, session, redirect, u
 from werkzeug.utils import secure_filename
 from functools import wraps
 from datetime import datetime, timezone
+from flask_socketio import SocketIO, emit, join_room, leave_room
 
 from config import SECRET_KEY, UPLOAD_FOLDER, MAX_CONTENT_LENGTH, LOG_FORMAT, LOG_LEVEL
 # ИСПРАВЛЕНО: Добавлены PersonalChat и ChatGroup в импорт
@@ -37,6 +38,12 @@ app = Flask(__name__)
 app.secret_key = SECRET_KEY
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+
+# Redis URL для SocketIO (из переменной окружения или по умолчанию)
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+
+# Инициализация SocketIO с поддержкой Redis для production
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', message_queue=REDIS_URL)
 
 # Создаем папку для загрузок если существует
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -1216,7 +1223,226 @@ def get_chat_history_updates(chat_id: int):
         db.close()
 
 
+# ==================== WEBSOCKET EVENTS (Flask-SocketIO) ====================
+
+@socketio.on('connect')
+def handle_connect():
+    """Обработка подключения клиента"""
+    client_id = session.get('client_id')
+    if client_id:
+        # Добавляем пользователя в личную комнату
+        join_room(f'user_{client_id}')
+        logger.info(f"Client {client_id} connected via WebSocket")
+        emit('connected', {'message': 'Connected to WebSocket'})
+    else:
+        logger.warning("WebSocket connection without authenticated session")
+        return False  # Отклоняем подключение без авторизации
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Обработка отключения клиента"""
+    client_id = session.get('client_id')
+    if client_id:
+        logger.info(f"Client {client_id} disconnected from WebSocket")
+    # SocketIO автоматически удаляет из комнат при disconnect
+
+
+@socketio.on('join_group')
+def handle_join_group(data):
+    """Присоединение к комнате группы"""
+    client_id = session.get('client_id')
+    group_id = data.get('group_id')
+    
+    if not client_id or not group_id:
+        return
+    
+    db = SessionLocal()
+    try:
+        # Проверяем, является ли клиент участником группы
+        if is_client_member_of_group(db, client_id, group_id):
+            room_name = f'group_{group_id}'
+            join_room(room_name)
+            logger.info(f"Client {client_id} joined group room {room_name}")
+            emit('joined_group', {'group_id': group_id, 'message': f'Joined group {group_id}'})
+        else:
+            logger.warning(f"Client {client_id} tried to join group {group_id} but is not a member")
+    finally:
+        db.close()
+
+
+@socketio.on('join_personal')
+def handle_join_personal(data):
+    """Присоединение к личному чату (для получения уведомлений)"""
+    client_id = session.get('client_id')
+    personal_chat_id = data.get('personal_chat_id')
+    
+    if not client_id or not personal_chat_id:
+        return
+    
+    db = SessionLocal()
+    try:
+        chat = get_personal_chat_from_db(db, personal_chat_id, client_id)
+        if chat:
+            room_name = f'personal_{personal_chat_id}'
+            join_room(room_name)
+            logger.info(f"Client {client_id} joined personal chat room {room_name}")
+            emit('joined_personal', {'personal_chat_id': personal_chat_id})
+    finally:
+        db.close()
+
+
+@socketio.on('send_message')
+def handle_send_message(data):
+    """Обработка отправки сообщения через WebSocket"""
+    client_id = session.get('client_id')
+    content = data.get('content', '').strip()
+    personal_chat_id = data.get('personal_chat_id')
+    group_id = data.get('group_id')
+    
+    if not content:
+        emit('error', {'message': 'Сообщение не может быть пустым'})
+        return
+    
+    if not client_id:
+        emit('error', {'message': 'Требуется авторизация'})
+        return
+    
+    db = SessionLocal()
+    try:
+        # Определяем тип чата и сохраняем сообщение
+        if personal_chat_id:
+            # Личный чат
+            chat = get_personal_chat_from_db(db, personal_chat_id, client_id)
+            if not chat:
+                emit('error', {'message': 'Чат не найден'})
+                return
+            
+            # Добавляем сообщение пользователя
+            user_msg = add_message(
+                db, content, 'client', client_id,
+                personal_chat_id=personal_chat_id, message_type='text'
+            )
+            
+            # Получаем имя отправителя
+            user_client = get_client_by_id(db, client_id)
+            message_data = {
+                'id': user_msg.id,
+                'content': user_msg.content,
+                'sender_type': user_msg.sender_type,
+                'sender_id': client_id,
+                'sender_name': user_client.login if user_client else 'Unknown',
+                'created_at': user_msg.created_at.isoformat(),
+                'personal_chat_id': personal_chat_id
+            }
+            
+            # Отправляем сообщение всем в комнате личного чата
+            socketio.emit('new_message', message_data, room=f'personal_{personal_chat_id}')
+            
+            # Проверяем флаг ai_enabled
+            if chat.ai_enabled:
+                # Получаем историю для контекста
+                history = get_personal_chat_history(db, personal_chat_id, client_id, limit=20)
+                context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
+                
+                # Отправляем в Ollama
+                ai_response = ollama.chat(
+                    message=f"{context}\nUser: {content}",
+                    system_prompt="Ты полезный ассистент. Отвечай кратко и по делу."
+                )
+                
+                # Добавляем ответ ИИ
+                ai_msg = add_message(
+                    db, ai_response, 'ai', None,
+                    personal_chat_id=personal_chat_id, message_type='text'
+                )
+                
+                ai_message_data = {
+                    'id': ai_msg.id,
+                    'content': ai_msg.content,
+                    'sender_type': ai_msg.sender_type,
+                    'sender_id': None,
+                    'sender_name': 'Gemma AI',
+                    'created_at': ai_msg.created_at.isoformat(),
+                    'personal_chat_id': personal_chat_id
+                }
+                
+                # Отправляем ответ ИИ
+                socketio.emit('new_message', ai_message_data, room=f'personal_{personal_chat_id}')
+        
+        elif group_id:
+            # Групповой чат
+            if not is_client_member_of_group(db, client_id, group_id):
+                emit('error', {'message': 'Нет доступа к группе'})
+                return
+            
+            # Получаем группу
+            group = get_group_by_id(db, group_id)
+            
+            # Добавляем сообщение пользователя
+            user_msg = add_message(
+                db, content, 'client', client_id,
+                group_id=group_id, message_type='text'
+            )
+            
+            # Получаем имя отправителя
+            user_client = get_client_by_id(db, client_id)
+            message_data = {
+                'id': user_msg.id,
+                'content': user_msg.content,
+                'sender_type': user_msg.sender_type,
+                'sender_id': client_id,
+                'sender_name': user_client.login if user_client else 'Unknown',
+                'created_at': user_msg.created_at.isoformat(),
+                'group_id': group_id
+            }
+            
+            # ОТПРАВЛЯЕМ СООБЩЕНИЕ ВСЕМ В КОМНАТЕ ГРУППЫ
+            room_name = f'group_{group_id}'
+            socketio.emit('new_message', message_data, room=room_name)
+            
+            # Проверяем флаг ai_enabled
+            if group and group.ai_enabled:
+                # Получаем историю для контекста
+                history = get_group_history(db, group_id, client_id, limit=20)
+                context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
+                
+                # Отправляем в Ollama
+                ai_response = ollama.chat(
+                    message=f"{context}\nUser: {content}",
+                    system_prompt="Ты полезный ассистент в групповом чате. Отвечай кратко и по делу."
+                )
+                
+                # Добавляем ответ ИИ
+                ai_msg = add_message(
+                    db, ai_response, 'ai', None,
+                    group_id=group_id, message_type='text'
+                )
+                
+                ai_message_data = {
+                    'id': ai_msg.id,
+                    'content': ai_msg.content,
+                    'sender_type': ai_msg.sender_type,
+                    'sender_id': None,
+                    'sender_name': 'Gemma AI',
+                    'created_at': ai_msg.created_at.isoformat(),
+                    'group_id': group_id
+                }
+                
+                # Отправляем ответ ИИ всем в группе
+                socketio.emit('new_message', ai_message_data, room=room_name)
+    
+    except Exception as e:
+        logger.error(f"Error in send_message WebSocket: {str(e)}")
+        emit('error', {'message': f'Ошибка отправки: {str(e)}'})
+    finally:
+        db.close()
+
+
+# ==================== ЗАПУСК ПРИЛОЖЕНИЯ ====================
+
 if __name__ == '__main__':
     # Обновляем last_seen при старте (опционально)
     logger.info("Starting Gemma-Hub Server...")
-    app.run(host='0.0.0.0', port=5002, debug=True)
+    # Запускаем через socketio.run для поддержки WebSocket
+    socketio.run(app, host='0.0.0.0', port=5002, debug=True, allow_unsafe_werkzeug=True)
