@@ -394,6 +394,21 @@ def update_client_last_seen(db, client_id: int):
     return client
 
 
+def update_user_online_status(db, client_id: int, is_online: bool):
+    """Обновляет last_seen для клиента при подключении/отключении WebSocket"""
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if client:
+        if is_online:
+            client.last_seen = func.now()  # Устанавливаем текущее время при подключении
+        else:
+            # При отключении можно установить время в прошлое, чтобы считался offline
+            from datetime import datetime, timedelta
+            client.last_seen = datetime.utcnow() - timedelta(minutes=10)  # 10 минут назад
+        db.commit()
+        logger.debug(f"Updated online status for client {client_id}: {'online' if is_online else 'offline'}")
+    return client
+
+
 def get_all_users_with_status(db):
     """Возвращает список всех пользователей со статусом online/offline"""
     from datetime import datetime, timedelta
