@@ -447,6 +447,19 @@ async function sendMessage() {
     const txt = inp.value.trim();
     if (!txt || !state.currentChat) return;
 
+    // Проверяем команду смены имени ИИ
+    if (txt.startsWith('/setai ')) {
+        const newName = txt.substring(7).trim();
+        if (newName.length < 2) {
+            alert('Имя должно содержать минимум 2 символа');
+            inp.value = '';
+            return;
+        }
+        await setAiName(newName);
+        inp.value = '';
+        return;
+    }
+
     // Очищаем поле ввода сразу
     inp.value = '';
 

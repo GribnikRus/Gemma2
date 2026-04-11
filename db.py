@@ -44,6 +44,7 @@ class PersonalChat(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     ai_enabled = Column(Boolean, default=True)
+    ai_name = Column(String(100), default="Гемма")
     
     owner = relationship("Client", back_populates="personal_chats")
     messages = relationship("ChatMessage", back_populates="personal_chat", cascade="all, delete-orphan")
@@ -57,6 +58,7 @@ class ChatGroup(Base):
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     ai_enabled = Column(Boolean, default=True)
+    ai_name = Column(String(100), default="Гемма")
     
     owner = relationship("Client", foreign_keys=[owner_id])
     members = relationship("GroupMember", back_populates="group", cascade="all, delete-orphan")
@@ -495,5 +497,33 @@ def toggle_chat_ai_enabled(db, chat_type: str, chat_id: int, ai_enabled: bool):
             group.ai_enabled = ai_enabled
             db.commit()
             logger.info(f"Set ai_enabled={ai_enabled} for group {chat_id}")
+            return True
+    return False
+
+
+def set_chat_ai_name(db, chat_type: str, chat_id: int, new_name: str):
+    """Устанавливает новое имя ИИ для чата"""
+    # Валидация имени: минимум 2 символа, только буквы, цифры, пробелы и некоторые знаки препинания
+    import re
+    if len(new_name) < 2:
+        logger.warning(f"AI name too short: {new_name}")
+        return False
+    if not re.match(r'^[\w\s\-_.,!?\']+$', new_name, re.UNICODE):
+        logger.warning(f"Invalid AI name characters: {new_name}")
+        return False
+    
+    if chat_type == 'personal':
+        chat = get_personal_chat_by_id(db, chat_id)
+        if chat:
+            chat.ai_name = new_name
+            db.commit()
+            logger.info(f"Set ai_name={new_name} for personal chat {chat_id}")
+            return True
+    elif chat_type == 'group':
+        group = get_group_by_id(db, chat_id)
+        if group:
+            group.ai_name = new_name
+            db.commit()
+            logger.info(f"Set ai_name={new_name} for group {chat_id}")
             return True
     return False
