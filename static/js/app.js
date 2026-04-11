@@ -5,7 +5,6 @@ const state = {
     chats: [],
     groups: [],
     usersStatus: [],
-    messagePollingInterval: null,
     lastMessageId: null,
     originalTitle: document.title,
     socket: null  // WebSocket соединение
@@ -18,6 +17,8 @@ function initSocket() {
     
     state.socket.on('connect', () => {
         console.log('WebSocket connected');
+        // При подключении загружаем актуальный список пользователей
+        loadUsers();
     });
     
     state.socket.on('disconnect', () => {
@@ -39,6 +40,24 @@ function initSocket() {
             showToast(`Новое сообщение в ${data.chat_name || 'чате'}`);
             document.title = '🔔 Новое сообщение!';
             setTimeout(() => { document.title = state.originalTitle; }, 3000);
+        }
+    });
+    
+    // Событие: пользователь присоединился к чату/группе
+    state.socket.on('user_joined', (data) => {
+        console.log('User joined:', data);
+        loadUsers(); // Обновляем список онлайн-пользователей
+        if (state.currentChatType === 'group' && state.currentChat?.id === data.group_id) {
+            updateMembersList(); // Обновляем список участников группы
+        }
+    });
+    
+    // Событие: пользователь покинул чат/группу
+    state.socket.on('user_left', (data) => {
+        console.log('User left:', data);
+        loadUsers(); // Обновляем список онлайн-пользователей
+        if (state.currentChatType === 'group' && state.currentChat?.id === data.group_id) {
+            updateMembersList(); // Обновляем список участников группы
         }
     });
     
@@ -114,92 +133,33 @@ function showToast(message) {
     // Можно добавить визуальное отображение тоста
 }
 
-// --- Polling Functions ---
-function startMessagePolling(chatId, chatType) {
-    // Останавливаем предыдущий polling если был
-    stopMessagePolling();
-    
-    // Сбрасываем lastMessageId при открытии нового чата
-    state.lastMessageId = null;
-    
-    // Запускаем polling каждые 3 секунды (как fallback)
-    state.messagePollingInterval = setInterval(async () => {
-        try {
-            const url = `/api/chat/${chatId}/history?type=${chatType}&last_message_id=${state.lastMessageId || ''}&limit=50`;
-            const res = await fetch(url, {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            if (!res.ok) return;
-            
-            const data = await res.json();
-            const newMessages = data.messages || [];
-            
-            if (newMessages.length > 0) {
-                // Обновляем lastMessageId
-                state.lastMessageId = newMessages[newMessages.length - 1].id;
-                
-                // Добавляем новые сообщения в DOM
-                appendNewMessages(newMessages);
-                
-                // Уведомление если окно не активно
-                if (document.hidden || window.parent !== window.top) {
-                    document.title = '🔔 Новое сообщение!';
-                    setTimeout(() => { document.title = state.originalTitle; }, 3000);
-                }
-            }
-        } catch (e) {
-            console.error('Polling error:', e);
-        }
-    }, 3000);
-}
+// --- Polling Functions (удалено, т.к. теперь используется WebSocket) ---
+// Функции startMessagePolling и stopMessagePolling больше не нужны
 
 function stopMessagePolling() {
-    if (state.messagePollingInterval) {
-        clearInterval(state.messagePollingInterval);
-        state.messagePollingInterval = null;
-    }
+    // Очищаем lastMessageId и восстанавливаем заголовок
     state.lastMessageId = null;
     document.title = state.originalTitle;
 }
 
-function appendNewMessages(messages) {
-    const container = document.getElementById('messages-container');
-    if (!container || messages.length === 0) return;
+// Функция appendNewMessages больше не используется, т.к. сообщения приходят через WebSocket
+// Оставляем как заглушку на случай необходимости в будущем
+
+// Добавляем функцию для обновления списка участников группы
+function updateMembersList() {
+    if (state.currentChatType !== 'group' || !state.currentChat) return;
     
-    // Проверяем, находится ли пользователь внизу чата (чтобы решить, скроллить ли)
-    const isScrolledToBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 50;
-    
-    messages.forEach(m => {
-        // Проверяем, нет ли уже такого сообщения в DOM
-        const existingMsg = document.querySelector(`.message[data-msg-id="${m.id}"]`);
-        if (existingMsg) return;
-        
-        const isUser = m.sender_type === 'client';
-        let senderHtml = '';
-        
-        // Логика имен для групповых чатов
-        if (state.currentChatType === 'group' && !isUser && m.sender_name) {
-            senderHtml = `<span class="msg-sender" style="color: #3390ec; font-weight: bold;">${m.sender_name}</span>`;
-        } else if (!isUser) {
-            senderHtml = `<span class="msg-sender" style="color: #e53935; font-weight: bold;">Gemma AI</span>`;
-        }
-        
-        const msgHtml = `
-        <div class="message ${isUser ? 'user' : 'ai'}" data-msg-id="${m.id}">
-            ${senderHtml}
-            <div class="msg-content">${m.content}</div>
-            <div class="msg-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
-        </div>`;
-        
-        container.insertAdjacentHTML('beforeend', msgHtml);
-    });
-    
-    // Скроллим вниз только если пользователь был внизу
-    if (isScrolledToBottom) {
-        container.scrollTop = container.scrollHeight;
-    }
+    // Загружаем свежие данные о группе
+    apiRequest(`/api/group/${state.currentChat.id}`)
+        .then(data => {
+            const membersList = document.getElementById('members-list');
+            if (membersList && data.members) {
+                membersList.innerHTML = data.members.map(m => 
+                    `<div class="chat-item" style="padding:5px;"><div class="avatar" style="width:25px;height:25px;font-size:0.7rem">${m.login[0]}</div> ${m.login}</div>`
+                ).join('');
+            }
+        })
+        .catch(e => console.error('Ошибка обновления списка участников:', e));
 }
 
 // --- API Helpers ---
@@ -266,6 +226,7 @@ function showApp() {
     document.getElementById('app-container').classList.remove('hidden');
     document.getElementById('user-display').textContent = state.currentUser.login;
     document.getElementById('user-avatar').textContent = state.currentUser.login[0].toUpperCase();
+    initSocket(); // Инициализируем WebSocket при входе в приложение
     loadChats();
 }
 
@@ -420,8 +381,12 @@ async function selectChat(id, type) {
             state.lastMessageId = data.messages[data.messages.length - 1].id;
         }
         
-        // Запускаем polling для нового чата
-        startMessagePolling(id, type);
+        // Подключаемся к комнате через WebSocket
+        if (type === 'group') {
+            joinGroupRoom(id);
+        } else {
+            joinPersonalRoom(id);
+        }
         
         // Мобильное меню закрыть
         document.getElementById('sidebar').classList.remove('open');

@@ -1233,6 +1233,16 @@ def handle_connect():
         # Добавляем пользователя в личную комнату
         join_room(f'user_{client_id}')
         logger.info(f"Client {client_id} connected via WebSocket")
+        
+        # Обновляем статус пользователя на online в базе данных
+        db = SessionLocal()
+        try:
+            update_user_online_status(db, client_id, True)
+            # Уведомляем всех о том, что пользователь зашел
+            socketio.emit('user_joined', {'client_id': client_id}, broadcast=True)
+        finally:
+            db.close()
+        
         emit('connected', {'message': 'Connected to WebSocket'})
     else:
         logger.warning("WebSocket connection without authenticated session")
@@ -1245,6 +1255,15 @@ def handle_disconnect():
     client_id = session.get('client_id')
     if client_id:
         logger.info(f"Client {client_id} disconnected from WebSocket")
+        
+        # Обновляем статус пользователя на offline в базе данных
+        db = SessionLocal()
+        try:
+            update_user_online_status(db, client_id, False)
+            # Уведомляем всех о том, что пользователь вышел
+            socketio.emit('user_left', {'client_id': client_id}, broadcast=True)
+        finally:
+            db.close()
     # SocketIO автоматически удаляет из комнат при disconnect
 
 
