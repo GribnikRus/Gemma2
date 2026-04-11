@@ -24,7 +24,7 @@ from db import (
     create_task_history, update_task_history,
     create_observer_session, add_observer_analysis,
     update_client_last_seen, get_all_users_with_status, get_pending_invitations,
-    accept_invitation, toggle_chat_ai_enabled, get_personal_chat_by_id, get_group_by_id,
+    accept_invitation, toggle_chat_ai_enabled, get_personal_chat_by_id, get_group_by_id, set_chat_ai_name,
     Client, ChatGroup, GroupMember, TaskHistory, PersonalChat  # <--- ДОБАВЛЕНО PersonalChat
 )
 from ollama_client import OllamaClient
@@ -65,6 +65,45 @@ def verify_password_sha256(password: str, hashed: str) -> bool:
     return hash_password_sha256(password) == hashed
 
 # ==================== УТИЛИТЫ ====================
+
+def is_ai_triggered(content: str, ai_name: str) -> bool:
+    """
+    Проверяет, обращается ли пользователь к ИИ.
+    Триггеры:
+    1. @<имя_ии> в начале сообщения
+    2. /gemma или /ai в начале
+    3. <имя_ии>, или <имя_ии> с последующим пробелом/запятой
+    """
+    if not content:
+        return False
+    
+    # Нормализуем имя для сравнения (убираем пробелы по краям)
+    ai_name_clean = ai_name.strip()
+    
+    # 1. Проверка @<имя> в начале
+    if content.startswith('@'):
+        # Извлекаем имя после @
+        import re
+        match = re.match(r'^@(\S+)[,\s]?', content, re.IGNORECASE)
+        if match:
+            mentioned_name = match.group(1).rstrip(',').rstrip('!').rstrip('.')
+            if mentioned_name.lower() == ai_name_clean.lower():
+                return True
+    
+    # 2. Проверка команд /gemma или /ai
+    if content.startswith('/gemma') or content.startswith('/ai'):
+        return True
+    
+    # 3. Проверка имени в начале без @, но с запятой или пробелом
+    # Например: "Гемма, привет" или "Гемма объясни"
+    import re
+    # Паттерн: имя в начале строки, за которым следует запятая, пробел или конец строки
+    pattern = rf'^{re.escape(ai_name_clean)}[,\s]|^{re.escape(ai_name_clean)}$'
+    if re.match(pattern, content, re.IGNORECASE):
+        return True
+    
+    return False
+
 
 def login_required(f):
     """Декоратор для защиты маршрутов требующих авторизации"""
@@ -308,9 +347,9 @@ def send_message():
                 personal_chat_id=personal_chat_id, message_type='text'
             )
             
-            # Проверяем флаг ai_enabled
+            # Проверяем флаг ai_enabled и триггер обращения к ИИ
             ai_message = None
-            if chat.ai_enabled:
+            if chat.ai_enabled and is_ai_triggered(content, chat.ai_name or "Гемма"):
                 # Получаем историю для контекста
                 history = get_personal_chat_history(db, personal_chat_id, session['client_id'], limit=20)
                 context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
@@ -318,7 +357,7 @@ def send_message():
                 # Отправляем в Ollama
                 ai_response = ollama.chat(
                     message=f"{context}\nUser: {content}",
-                    system_prompt="Ты полезный ассистент. Отвечай кратко и по делу."
+                    system_prompt=f"Ты полезный ассистент. Тебя зовут {chat.ai_name or 'Гемма'}. Отвечай кратко и по делу."
                 )
                 
                 # Добавляем ответ ИИ
@@ -330,7 +369,7 @@ def send_message():
                     'id': ai_msg.id,
                     'content': ai_msg.content,
                     'sender_type': ai_msg.sender_type,
-                    'sender_name': 'Gemma AI',
+                    'sender_name': chat.ai_name or 'Гемма',
                     'created_at': ai_msg.created_at.isoformat()
                 }
             
@@ -366,9 +405,9 @@ def send_message():
                 group_id=group_id, message_type='text'
             )
 
-            # Проверяем флаг ai_enabled
+            # Проверяем флаг ai_enabled и триггер обращения к ИИ
             ai_message = None
-            if group and group.ai_enabled:
+            if group and group.ai_enabled and is_ai_triggered(content, group.ai_name or "Гемма"):
                 # Получаем историю для контекста
                 history = get_group_history(db, group_id, session['client_id'], limit=20)
                 context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
@@ -376,7 +415,7 @@ def send_message():
                 # Отправляем в Ollama
                 ai_response = ollama.chat(
                     message=f"{context}\nUser: {content}",
-                    system_prompt="Ты полезный ассистент в групповом чате. Отвечай кратко и по делу."
+                    system_prompt=f"Ты полезный ассистент в групповом чате. Тебя зовут {group.ai_name or 'Гемма'}. Отвечай кратко и по делу."
                 )
 
                 # Добавляем ответ ИИ
@@ -388,7 +427,7 @@ def send_message():
                     'id': ai_msg.id,
                     'content': ai_msg.content,
                     'sender_type': ai_msg.sender_type,
-                    'sender_name': 'Gemma AI',
+                    'sender_name': group.ai_name or 'Гемма',
                     'created_at': ai_msg.created_at.isoformat()
                 }
 
@@ -1143,6 +1182,74 @@ def toggle_ai():
         db.close()
 
 
+@app.route('/api/chat/set_ai_name', methods=['POST'])
+@login_required
+def set_ai_name_route():
+    """Установить новое имя ИИ для чата"""
+    data = request.get_json()
+    chat_type = data.get('chat_type')  # 'personal' или 'group'
+    chat_id = data.get('chat_id')
+    new_name = data.get('new_name', '').strip()
+    
+    if not chat_type or not chat_id:
+        return jsonify({'error': 'Необходимо указать chat_type и chat_id'}), 400
+    
+    if not new_name or len(new_name) < 2:
+        return jsonify({'error': 'Имя должно содержать минимум 2 символа'}), 400
+    
+    db = SessionLocal()
+    try:
+        chat = None
+        
+        # Проверяем права доступа
+        if chat_type == 'personal':
+            chat = db.query(PersonalChat).filter(
+                PersonalChat.id == chat_id,
+                PersonalChat.owner_id == session['client_id']
+            ).first()
+            if not chat:
+                return jsonify({'error': 'Чат не найден или нет прав'}), 404
+        elif chat_type == 'group':
+            # Проверяем членство в группе
+            if not is_client_member_of_group(db, session['client_id'], chat_id):
+                return jsonify({'error': 'Нет доступа к группе'}), 403
+            chat = db.query(ChatGroup).filter(
+                ChatGroup.id == chat_id
+            ).first()
+            if not chat:
+                return jsonify({'error': 'Группа не найдена'}), 404
+        else:
+            return jsonify({'error': 'Неверный тип чата'}), 400
+        
+        # Устанавливаем новое имя через helper функцию
+        success = set_chat_ai_name(db, chat_type, chat_id, new_name)
+        
+        if not success:
+            return jsonify({'error': 'Не удалось установить имя. Проверьте корректность.'}), 500
+        
+        logger.info(f"AI name set to '{new_name}' for {chat_type} #{chat_id}")
+        
+        # Отправляем событие всем участникам чата через WebSocket
+        room_name = f'{chat_type}_{chat_id}'
+        socketio.emit('ai_name_changed', {
+            'chat_type': chat_type,
+            'chat_id': chat_id,
+            'new_name': new_name
+        }, room=room_name)
+        
+        return jsonify({
+            'message': f'Имя ассистента изменено на {new_name}',
+            'ai_name': new_name
+        })
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error setting AI name: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()
+
+
 # ==================== НАБЛЮДАТЕЛЬ ДЛЯ ЛИЧНЫХ ЧАТОВ ====================
 
 @app.route('/api/chat/observe', methods=['POST'])
@@ -1358,8 +1465,8 @@ def handle_send_message(data):
             # Отправляем сообщение всем в комнате личного чата
             socketio.emit('new_message', message_data, room=f'personal_{personal_chat_id}')
             
-            # Проверяем флаг ai_enabled
-            if chat.ai_enabled:
+            # Проверяем флаг ai_enabled и триггер обращения к ИИ
+            if chat.ai_enabled and is_ai_triggered(content, chat.ai_name or "Гемма"):
                 # Получаем историю для контекста
                 history = get_personal_chat_history(db, personal_chat_id, client_id, limit=20)
                 context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
@@ -1367,7 +1474,7 @@ def handle_send_message(data):
                 # Отправляем в Ollama
                 ai_response = ollama.chat(
                     message=f"{context}\nUser: {content}",
-                    system_prompt="Ты полезный ассистент. Отвечай кратко и по делу."
+                    system_prompt=f"Ты полезный ассистент. Тебя зовут {chat.ai_name or 'Гемма'}. Отвечай кратко и по делу."
                 )
                 
                 # Добавляем ответ ИИ
@@ -1381,7 +1488,7 @@ def handle_send_message(data):
                     'content': ai_msg.content,
                     'sender_type': ai_msg.sender_type,
                     'sender_id': None,
-                    'sender_name': 'Gemma AI',
+                    'sender_name': chat.ai_name or 'Гемма',
                     'created_at': ai_msg.created_at.isoformat(),
                     'personal_chat_id': personal_chat_id
                 }
@@ -1420,8 +1527,8 @@ def handle_send_message(data):
             room_name = f'group_{group_id}'
             socketio.emit('new_message', message_data, room=room_name)
             
-            # Проверяем флаг ai_enabled
-            if group and group.ai_enabled:
+            # Проверяем флаг ai_enabled и триггер обращения к ИИ
+            if group and group.ai_enabled and is_ai_triggered(content, group.ai_name or "Гемма"):
                 # Получаем историю для контекста
                 history = get_group_history(db, group_id, client_id, limit=20)
                 context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
@@ -1429,7 +1536,7 @@ def handle_send_message(data):
                 # Отправляем в Ollama
                 ai_response = ollama.chat(
                     message=f"{context}\nUser: {content}",
-                    system_prompt="Ты полезный ассистент в групповом чате. Отвечай кратко и по делу."
+                    system_prompt=f"Ты полезный ассистент в групповом чате. Тебя зовут {group.ai_name or 'Гемма'}. Отвечай кратко и по делу."
                 )
                 
                 # Добавляем ответ ИИ
@@ -1443,7 +1550,7 @@ def handle_send_message(data):
                     'content': ai_msg.content,
                     'sender_type': ai_msg.sender_type,
                     'sender_id': None,
-                    'sender_name': 'Gemma AI',
+                    'sender_name': group.ai_name or 'Гемма',
                     'created_at': ai_msg.created_at.isoformat(),
                     'group_id': group_id
                 }
