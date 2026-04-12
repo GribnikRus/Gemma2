@@ -38,6 +38,8 @@ def create_group_route():
             'name': group.name,
             'description': group.description,
             'owner_id': group.owner_id,
+            'ai_enabled': group.ai_enabled,
+            'ai_name': group.ai_name,
             'created_at': group.created_at.isoformat()
         }), 201
     finally:
@@ -58,6 +60,8 @@ def get_client_groups_route():
             'name': g.name,
             'description': g.description,
             'owner_id': g.owner_id,
+            'ai_enabled': g.ai_enabled,
+            'ai_name': g.ai_name,
             'created_at': g.created_at.isoformat()
         } for g in groups])
     finally:
@@ -91,7 +95,8 @@ def get_group(group_id: int):
                 'name': group.name,
                 'description': group.description,
                 'owner_id': group.owner_id,
-                'ai_enabled': group.ai_enabled
+                'ai_enabled': group.ai_enabled,
+                'ai_name': group.ai_name
             },
             'members': [{
                 'client_id': m.client_id,
@@ -270,6 +275,7 @@ def get_client_chats():
                 'name': g.name,
                 'type': 'group',
                 'ai_enabled': g.ai_enabled,
+                'ai_name': g.ai_name,
                 'created_at': g.created_at.isoformat()
             } for g in groups]
         })
