@@ -76,4 +76,4 @@ register_websocket_events(socketio)
 if __name__ == '__main__':
     logger.info("Starting Gemma-Hub Server...")
     # Запускаем через socketio.run для поддержки WebSocket
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+    socketio.run(app, host='0.0.0.0', port=5002, debug=False)
