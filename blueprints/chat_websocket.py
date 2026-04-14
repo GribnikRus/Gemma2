@@ -24,7 +24,7 @@ def register_websocket_events(socketio):
     """Регистрирует все WebSocket обработчики событий (кроме connect)"""
     global ollama
     # Получаем ЕДИНЫЙ экземпляр OllamaClient из app.extensions
-    ollama = socketio.app.extensions.get('ollama_client')
+    ollama = current_app.extensions.get('ollama_client')
     
     # ============================================================
     # ❌ ОБРАБОТЧИК 'connect' УДАЛЁН — он теперь в app.py
