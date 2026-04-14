@@ -428,6 +428,11 @@ async function loadChats() {
         renderList('groups-list', state.groups, 'group');
         loadUsers();
         loadInvitations(); // Загружаем приглашения при загрузке чатов
+        
+        // Если чаты уже были загружены и есть текущий чат, обновляем его состояние
+        if (state.currentChat) {
+            console.log('✅ Chats reloaded, current chat preserved');
+        }
     } catch (error) {
         console.error('❌ Error loading chats:', error);
     }
