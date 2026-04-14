@@ -15,9 +15,10 @@ services:
     container_name: gemma-hub-app
     ports:
       - "5002:5002"
+    env_file:
+      - .env
     environment:
       - REDIS_URL=redis://redis:6379/0?health_check_interval=30
-      - DATABASE_URL=sqlite:////app/data/gemma_hub.db
     volumes:
       - ./uploads:/app/uploads
       - db_data:/app/data
