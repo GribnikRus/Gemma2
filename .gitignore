@@ -1,16 +1,1 @@
-```
-# Compiled Python files
-__pycache__/
-*.pyc
-
-# Logs
-*.log
-
-# Database (if it's auto-generated)
-*.db
-
-# Environment files
-.env
-.env.local
-*.env.*
-```
+(empty)
