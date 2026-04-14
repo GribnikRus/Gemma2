@@ -185,6 +185,19 @@
                 document.getElementById('register-error').textContent = err.message; 
             }
         };
+        
+        // Проверяем сессию при загрузке login.html - если уже авторизован, редиректим на главную
+        (async function checkExistingSession() {
+            try {
+                const res = await fetch('/api/auth/me');
+                if (res.ok) {
+                    // Уже авторизован, идём на главную
+                    window.location.href = '/';
+                }
+            } catch (e) {
+                // Нет активной сессии, остаёмся на странице входа
+            }
+        })();
     </script>
 </body>
 </html>
