@@ -8,9 +8,9 @@ eventlet.monkey_patch()
 
 import logging
 from flask import Flask, render_template, session
-from flask_socketio import SocketIO
+from flask_socketio import SocketIO, disconnect, join_room, emit
 
-from config import SECRET_KEY, UPLOAD_FOLDER, MAX_CONTENT_LENGTH, LOG_FORMAT, LOG_LEVEL, REDIS_BROKER_URL
+from config import SECRET_KEY, UPLOAD_FOLDER, MAX_CONTENT_LENGTH, LOG_FORMAT, LOG_LEVEL
 from db import init_db, SessionLocal
 
 # Настройка логирования
@@ -23,27 +23,83 @@ app.secret_key = SECRET_KEY
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
-# Redis URL для SocketIO (из переменной окружения или по умолчанию)
-REDIS_URL = os.environ.get('REDIS_URL', REDIS_BROKER_URL)
+# Инициализация SocketIO БЕЗ Redis (упрощённый режим)
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins="*", 
+    async_mode='eventlet',
+    ping_timeout=60,
+    ping_interval=25
+)
 
-# Инициализация SocketIO с поддержкой Redis для production
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', message_queue=REDIS_URL)
-
-# Создаем папку для загрузок если существует
+# Создаем папку для загрузок
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Инициализируем БД
-init_db()
+try:
+    init_db()
+    logger.info("Database initialized successfully")
+except Exception as e:
+    logger.error(f"Database initialization failed: {e}")
+    raise
+
+# Добавляем socketio в extensions для доступа из блупринтов
+app.extensions['socketio'] = socketio
 
 
 # ==================== ГЛАВНАЯ СТРАНИЦА ====================
 
 @app.route('/')
 def index():
-    """Главная страница - редирект на логин или интерфейс"""
+    """Главная страница"""
     if 'client_id' in session:
         return render_template('index.html')
     return render_template('login.html')
+
+
+# ==================== WEBSOCKET: ПОЛНЫЙ ОБРАБОТЧИК CONNECT ====================
+
+# ==================== WEBSOCKET: ПОЛНЫЙ ОБРАБОТЧИК CONNECT ====================
+
+@socketio.on('connect')
+def ws_connect(auth=None):  # ✅ Принимаем опциональный аргумент auth
+    """Полная обработка подключения: авторизация + комнаты + статусы"""
+    from flask_socketio import emit, join_room
+    
+    # 1. Проверка авторизации
+    if 'client_id' not in session:
+        logger.warning("WebSocket connection rejected: not authenticated")
+        disconnect()
+        return False
+    
+    client_id = session['client_id']
+    logger.info(f"Client {client_id} connected via WebSocket")
+    
+    # 2. Добавляем в личную комнату (для приватных уведомлений)
+    join_room(f'user_{client_id}')
+    
+    # 3. Обновляем статус online в БД
+    db = SessionLocal()
+    try:
+        from db import update_user_online_status
+        update_user_online_status(db, client_id, True)
+        
+        # 4. Уведомляем других клиентов (ОПЦИЯ 1: без 'to' = всем)
+        # ✅ Правильный способ: не указывать 'to' или 'broadcast'
+        socketio.emit('user_joined', {'client_id': client_id})
+        
+        # Если хочешь отправить ТОЛЬКО в определённую комнату:
+        # socketio.emit('user_joined', {'client_id': client_id}, room='all_users')
+        
+    except Exception as e:
+        logger.error(f"Error in ws_connect: {e}", exc_info=True)
+        db.rollback()
+    finally:
+        db.close()
+    
+    # 5. Подтверждаем подключение клиенту
+    emit('connected', {'message': 'Connected to Gemma-Hub', 'client_id': client_id})
+    return True
 
 
 # ==================== РЕГИСТРАЦИЯ BLUEPRINTS ====================
@@ -55,6 +111,8 @@ from blueprints.media_upload import media_upload_bp
 from blueprints.observer import observer_bp
 from blueprints.users import users_bp
 from blueprints.tasks import tasks_bp
+from blueprints.ai_status import ai_status_bp
+from blueprints.ai_models import ai_models_bp  
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(chat_personal_bp)
@@ -63,10 +121,13 @@ app.register_blueprint(media_upload_bp)
 app.register_blueprint(observer_bp)
 app.register_blueprint(users_bp)
 app.register_blueprint(tasks_bp)
+app.register_blueprint(ai_status_bp)
+app.register_blueprint(ai_models_bp)
 
 
 # ==================== WEBSOCKET EVENTS ====================
-
+# register_websocket_events регистрирует ТОЛЬКО: disconnect, join_group, join_personal, send_message
+# (обработчик connect уже определён выше и не должен дублироваться в блюпринте)
 from blueprints.chat_websocket import register_websocket_events
 register_websocket_events(socketio)
 
@@ -74,6 +135,5 @@ register_websocket_events(socketio)
 # ==================== ЗАПУСК ПРИЛОЖЕНИЯ ====================
 
 if __name__ == '__main__':
-    logger.info("Starting Gemma-Hub Server...")
-    # Запускаем через socketio.run для поддержки WebSocket
-    socketio.run(app, host='0.0.0.0', port=5002, debug=False)
+    logger.info("Starting Gemma-Hub Server on port 5002...")
+    socketio.run(app, host='0.0.0.0', port=5002, debug=False, use_reloader=False)

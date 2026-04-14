@@ -6,6 +6,8 @@ from .media_upload import media_upload_bp
 from .observer import observer_bp
 from .users import users_bp
 from .tasks import tasks_bp
+from .ai_status import ai_status_bp
+from .ai_models import ai_models_bp
 
 __all__ = [
     'auth_bp',
@@ -14,5 +16,8 @@ __all__ = [
     'media_upload_bp',
     'observer_bp',
     'users_bp',
-    'tasks_bp'
+    'tasks_bp',
+    'ai_status_bp' ,
+    'ai_models_bp'
+
 ]

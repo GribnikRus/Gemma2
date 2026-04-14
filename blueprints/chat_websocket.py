@@ -1,15 +1,16 @@
 """
-WebSocket события: connect, disconnect, join_group, join_personal, send_message.
+WebSocket события: disconnect, join_group, join_personal, send_message.
+Обработчик 'connect' вынесен в app.py для централизованной авторизации.
 Все обработчики @socketio.on(...) вынесены в этот модуль.
 """
 import logging
-from flask import session
+from flask import session, current_app
 from flask_socketio import emit, join_room
 
 from db import (
     SessionLocal, update_user_online_status, is_client_member_of_group,
     get_personal_chat as get_personal_chat_from_db, get_personal_chat_history,
-    add_message, get_client_by_id, get_group_by_id, get_group_history
+    add_message, get_client_by_id, get_group_by_id, get_group_history, Client
 )
 from ollama_client import OllamaClient
 from .utils import is_ai_triggered
@@ -20,31 +21,13 @@ ollama = OllamaClient()
 
 
 def register_websocket_events(socketio):
-    """Регистрирует все WebSocket обработчики событий"""
+    """Регистрирует все WebSocket обработчики событий (кроме connect)"""
     
-    @socketio.on('connect')
-    def handle_connect():
-        """Обработка подключения клиента"""
-        client_id = session.get('client_id')
-        if client_id:
-            # Добавляем пользователя в личную комнату
-            join_room(f'user_{client_id}')
-            logger.info(f"Client {client_id} connected via WebSocket")
-
-            # Обновляем статус пользователя на online в базе данных
-            db = SessionLocal()
-            try:
-                update_user_online_status(db, client_id, True)
-                # Уведомляем всех о том, что пользователь зашел
-                socketio.emit('user_joined', {'client_id': client_id}, broadcast=True)
-            finally:
-                db.close()
-
-            emit('connected', {'message': 'Connected to WebSocket'})
-        else:
-            logger.warning("WebSocket connection without authenticated session")
-            return False  # Отклоняем подключение без авторизации
-
+    # ============================================================
+    # ❌ ОБРАБОТЧИК 'connect' УДАЛЁН — он теперь в app.py
+    # Это предотвращает конфликты и дублирование логики
+    # ============================================================
+    
     @socketio.on('disconnect')
     def handle_disconnect():
         """Обработка отключения клиента"""
@@ -57,7 +40,10 @@ def register_websocket_events(socketio):
             try:
                 update_user_online_status(db, client_id, False)
                 # Уведомляем всех о том, что пользователь вышел
-                socketio.emit('user_left', {'client_id': client_id}, broadcast=True)
+                socketio.emit('user_left', {'client_id': client_id})
+            except Exception as e:
+                logger.error(f"Error updating offline status: {e}")
+                db.rollback()
             finally:
                 db.close()
         # SocketIO автоматически удаляет из комнат при disconnect
@@ -69,6 +55,7 @@ def register_websocket_events(socketio):
         group_id = data.get('group_id')
 
         if not client_id or not group_id:
+            emit('error', {'message': 'Неверные параметры для присоединения к группе'})
             return
 
         db = SessionLocal()
@@ -81,6 +68,10 @@ def register_websocket_events(socketio):
                 emit('joined_group', {'group_id': group_id, 'message': f'Joined group {group_id}'})
             else:
                 logger.warning(f"Client {client_id} tried to join group {group_id} but is not a member")
+                emit('error', {'message': 'Нет доступа к этой группе'})
+        except Exception as e:
+            logger.error(f"Error in join_group: {str(e)}")
+            emit('error', {'message': f'Ошибка: {str(e)}'})
         finally:
             db.close()
 
@@ -91,6 +82,7 @@ def register_websocket_events(socketio):
         personal_chat_id = data.get('personal_chat_id')
 
         if not client_id or not personal_chat_id:
+            emit('error', {'message': 'Неверные параметры для присоединения к чату'})
             return
 
         db = SessionLocal()
@@ -101,6 +93,12 @@ def register_websocket_events(socketio):
                 join_room(room_name)
                 logger.info(f"Client {client_id} joined personal chat room {room_name}")
                 emit('joined_personal', {'personal_chat_id': personal_chat_id})
+            else:
+                logger.warning(f"Client {client_id} tried to join non-existent personal chat {personal_chat_id}")
+                emit('error', {'message': 'Чат не найден'})
+        except Exception as e:
+            logger.error(f"Error in join_personal: {str(e)}")
+            emit('error', {'message': f'Ошибка: {str(e)}'})
         finally:
             db.close()
 
@@ -153,6 +151,9 @@ def register_websocket_events(socketio):
 
                 # Проверяем флаг ai_enabled и триггер обращения к ИИ
                 if chat.ai_enabled and is_ai_triggered(content, chat.ai_name or "Гемма"):
+                    # Показываем индикатор "печатает" (опционально, если клиент поддерживает)
+                    # socketio.emit('ai_typing', {'chat_id': personal_chat_id}, room=f'personal_{personal_chat_id}')
+                    
                     # Получаем историю для контекста
                     history = get_personal_chat_history(db, personal_chat_id, client_id, limit=20)
                     context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
@@ -244,8 +245,12 @@ def register_websocket_events(socketio):
                     # Отправляем ответ ИИ всем в группе
                     socketio.emit('new_message', ai_message_data, room=room_name)
 
+            else:
+                emit('error', {'message': 'Необходимо указать personal_chat_id или group_id'})
+
         except Exception as e:
-            logger.error(f"Error in send_message WebSocket: {str(e)}")
+            logger.error(f"Error in send_message WebSocket: {str(e)}", exc_info=True)
             emit('error', {'message': f'Ошибка отправки: {str(e)}'})
+            db.rollback()
         finally:
             db.close()

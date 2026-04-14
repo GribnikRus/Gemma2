@@ -1,4 +1,4 @@
-version: '3.8'
+
 
 services:
   redis:
@@ -16,7 +16,7 @@ services:
     ports:
       - "5002:5002"
     environment:
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://redis:6379/0?health_check_interval=30
       - DATABASE_URL=sqlite:////app/data/gemma_hub.db
     volumes:
       - ./uploads:/app/uploads

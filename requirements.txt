@@ -4,7 +4,7 @@ Flask-Login==0.6.3
 Flask-CORS==4.0.0
 Flask-SocketIO==5.3.6
 python-socketio==5.10.0
-eventlet==0.35.1
+eventlet==0.41.0
 psycopg2-binary==2.9.9
 redis==5.0.1
 celery==5.3.4

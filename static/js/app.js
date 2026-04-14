@@ -16,28 +16,51 @@ function initSocket() {
     state.socket = io();
     
     state.socket.on('connect', () => {
-        console.log('WebSocket connected');
+        console.log('✅ WebSocket connected');
         // При подключении загружаем актуальный список пользователей
         loadUsers();
     });
     
     state.socket.on('disconnect', () => {
-        console.log('WebSocket disconnected');
+        console.log('⚠️ WebSocket disconnected');
+    });
+    
+    state.socket.on('connect_error', (error) => {
+        console.error('❌ WebSocket connection error:', error);
     });
     
     state.socket.on('new_message', (data) => {
-        console.log('New message received via WebSocket:', data);
+        console.log('📨 New message received via WebSocket:', {
+            id: data.id,
+            sender: data.sender_name,
+            chat_id: data.personal_chat_id || data.group_id
+        });
+        
+        // Скрываем индикатор печатания, если получили сообщение (это ответ AI)
+        if (data.sender_type === 'ai') {
+            console.log('🤖 AI response received, hiding typing indicator');
+            hideTypingIndicator();
+        }
         
         // Проверяем, относится ли сообщение к текущему открытому чату
         const isGroupMatch = data.group_id && state.currentChatType === 'group' && state.currentChat?.id === data.group_id;
         const isPersonalMatch = data.personal_chat_id && state.currentChatType === 'personal' && state.currentChat?.id === data.personal_chat_id;
         
         if (isGroupMatch || isPersonalMatch) {
+            // ✅ Проверяем, нет ли уже такого сообщения (защита от дублей)
+            const existingMsg = document.querySelector(`.message[data-msg-id="${data.id}"]`);
+            if (existingMsg) {
+                console.log(`⚠️ Message ${data.id} already in DOM, skipping render`);
+                return;
+            }
+            
+            console.log(`✅ Rendering message ${data.id} in current chat`);
             // Добавляем сообщение в текущий чат
             renderSingleMessage(data);
         } else {
             // Если чат не открыт, показываем уведомление
-            showToast(`Новое сообщение в ${data.chat_name || 'чате'}`);
+            const chatName = data.chat_name || (state.currentChatType === 'group' ? 'группе' : 'личном чате');
+            showToast(`🔔 Новое сообщение в ${chatName}`);
             document.title = '🔔 Новое сообщение!';
             setTimeout(() => { document.title = state.originalTitle; }, 3000);
         }
@@ -45,7 +68,7 @@ function initSocket() {
     
     // Событие: пользователь присоединился к чату/группе
     state.socket.on('user_joined', (data) => {
-        console.log('User joined:', data);
+        console.log('👤 User joined:', data);
         loadUsers(); // Обновляем список онлайн-пользователей
         if (state.currentChatType === 'group' && state.currentChat?.id === data.group_id) {
             updateMembersList(); // Обновляем список участников группы
@@ -54,7 +77,7 @@ function initSocket() {
     
     // Событие: пользователь покинул чат/группу
     state.socket.on('user_left', (data) => {
-        console.log('User left:', data);
+        console.log('👋 User left:', data);
         loadUsers(); // Обновляем список онлайн-пользователей
         if (state.currentChatType === 'group' && state.currentChat?.id === data.group_id) {
             updateMembersList(); // Обновляем список участников группы
@@ -62,26 +85,28 @@ function initSocket() {
     });
     
     state.socket.on('joined_group', (data) => {
-        console.log('Joined group room:', data.group_id);
+        console.log(`✅ Joined group room: group_${data.group_id}`);
     });
     
     state.socket.on('joined_personal', (data) => {
-        console.log('Joined personal chat room:', data.personal_chat_id);
+        console.log(`✅ Joined personal chat room: personal_${data.personal_chat_id}`);
     });
     
     state.socket.on('error', (data) => {
-        console.error('WebSocket error:', data.message);
+        console.error('❌ WebSocket error:', data.message);
     });
 }
 
 function joinGroupRoom(groupId) {
     if (state.socket && state.socket.connected) {
+        console.log(`🔗 Emitting join_group: ${groupId}`);
         state.socket.emit('join_group', { group_id: groupId });
     }
 }
 
 function joinPersonalRoom(personalChatId) {
     if (state.socket && state.socket.connected) {
+        console.log(`🔗 Emitting join_personal: ${personalChatId}`);
         state.socket.emit('join_personal', { personal_chat_id: personalChatId });
     }
 }
@@ -129,21 +154,63 @@ function renderSingleMessage(m) {
 
 function showToast(message) {
     // Простая реализация уведомления
-    console.log('Toast:', message);
-    // Можно добавить визуальное отображение тоста
+    console.log('🍞 Toast:', message);
+    
+    // Визуальное отображение тоста (опционально)
+    const toast = document.createElement('div');
+    toast.textContent = message;
+    toast.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#333;color:white;padding:12px 20px;border-radius:8px;z-index:1000;animation:slideIn 0.3s ease;';
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
 }
 
-// --- Polling Functions (удалено, т.к. теперь используется WebSocket) ---
-// Функции startMessagePolling и stopMessagePolling больше не нужны
+// ========== НОВЫЕ ФУНКЦИИ ДЛЯ ИНДИКАТОРА ПЕЧАТАНИЯ ==========
+function showTypingIndicator() {
+    let indicator = document.getElementById('typing-indicator');
+    if (!indicator) {
+        // Создаем индикатор, если его нет
+        const container = document.getElementById('messages-container');
+        if (!container) return;
+        
+        const indicatorHtml = `
+            <div id="typing-indicator" class="typing-indicator hidden">
+                <div class="message ai">
+                    <div class="msg-sender" style="color: #e53935;">Gemma AI</div>
+                    <div class="msg-content">
+                        <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', indicatorHtml);
+        indicator = document.getElementById('typing-indicator');
+    }
+    
+    indicator.classList.remove('hidden');
+    const container = document.getElementById('messages-container');
+    container.scrollTop = container.scrollHeight;
+}
 
+function hideTypingIndicator() {
+    const indicator = document.getElementById('typing-indicator');
+    if (indicator) {
+        indicator.classList.add('hidden');
+        // Не удаляем элемент, чтобы можно было показать снова
+    }
+}
+// ========== КОНЕЦ НОВЫХ ФУНКЦИЙ ==========
+
+// --- Polling Functions (удалено, т.к. теперь используется WebSocket) ---
 function stopMessagePolling() {
     // Очищаем lastMessageId и восстанавливаем заголовок
     state.lastMessageId = null;
     document.title = state.originalTitle;
 }
-
-// Функция appendNewMessages больше не используется, т.к. сообщения приходят через WebSocket
-// Оставляем как заглушку на случай необходимости в будущем
 
 // Добавляем функцию для обновления списка участников группы
 function updateMembersList() {
@@ -218,7 +285,10 @@ async function checkSession() {
         const user = await apiRequest('/api/auth/me');
         state.currentUser = user;
         showApp();
-    } catch (e) { document.getElementById('auth-modal').classList.remove('hidden'); }
+    } catch (e) { 
+        console.log('⚠️ No active session, showing auth modal');
+        document.getElementById('auth-modal').classList.remove('hidden'); 
+    }
 }
 
 function showApp() {
@@ -226,10 +296,12 @@ function showApp() {
     document.getElementById('app-container').classList.remove('hidden');
     document.getElementById('user-display').textContent = state.currentUser.login;
     document.getElementById('user-avatar').textContent = state.currentUser.login[0].toUpperCase();
+    
     initSocket(); // Инициализируем WebSocket при входе в приложение
     loadChats();
+    checkAIAvailability();  // Проверка статуса AI при загрузке
+    loadModels();  // ✅ Загружаем список моделей
 }
-
 function setupEventListeners() {
     // Меню
     const sidebar = document.getElementById('sidebar');
@@ -280,6 +352,9 @@ function setupEventListeners() {
     
     document.getElementById('logout-btn').onclick = () => {
         stopMessagePolling();
+        if (state.socket && state.socket.connected) {
+            state.socket.disconnect();
+        }
         window.location.reload();
     };
     
@@ -412,11 +487,10 @@ function renderMessages(msgs) {
     if (!c) return;
 
     // Отладка в консоль
-    console.log("Отрисовка сообщений. Тип чата:", state.currentChatType, "Мой ID:", state.currentUser ? state.currentUser.client_id : 'нет');
+    console.log("🎨 Отрисовка сообщений. Тип чата:", state.currentChatType, "Мой ID:", state.currentUser ? state.currentUser.client_id : 'нет');
 
     c.innerHTML = msgs.map(m => {
         // Проверяем, я ли это написал (сравниваем ID)
-        // Внимание: в login ответе поле называется client_id, а в сообщении sender_id
         const isMe = state.currentUser && (m.sender_id === state.currentUser.client_id);
         
         let senderHtml = '';
@@ -442,6 +516,7 @@ function renderMessages(msgs) {
     c.scrollTop = c.scrollHeight;
 }
 
+// ========== МОДИФИЦИРОВАННАЯ ФУНКЦИЯ sendMessage ==========
 async function sendMessage() {
     const inp = document.getElementById('message-input');
     const txt = inp.value.trim();
@@ -460,6 +535,24 @@ async function sendMessage() {
         return;
     }
 
+    // Проверяем, может ли это сообщение вызвать AI
+    const aiToggle = document.getElementById('ai-enabled-toggle');
+    const isAiEnabled = aiToggle && aiToggle.checked;
+    
+    // Определяем, есть ли триггер для AI
+    const aiName = state.currentChat.ai_name || 'Гемма';
+    const mightTriggerAi = isAiEnabled && (
+        txt.startsWith('@') || 
+        txt.startsWith('/gemma') || 
+        txt.startsWith('/ai') ||
+        txt.toLowerCase().startsWith(aiName.toLowerCase())
+    );
+    
+    // Показываем индикатор печатания, если сообщение может вызвать AI
+    if (mightTriggerAi) {
+        showTypingIndicator();
+    }
+
     // Очищаем поле ввода сразу
     inp.value = '';
 
@@ -475,13 +568,17 @@ async function sendMessage() {
             throw new Error('WebSocket не подключен');
         }
 
-        // Сообщение будет отображено через socket.on('new_message', ...)
-        // после подтверждения от сервера
+        // Если через 10 секунд не пришел ответ, скрываем индикатор
+        setTimeout(() => {
+            hideTypingIndicator();
+        }, 10000);
 
     } catch(e) { 
-        alert('Ошибка отправки: ' + e.message); 
+        alert('Ошибка отправки: ' + e.message);
+        hideTypingIndicator();
     }
 }
+// ========== КОНЕЦ МОДИФИЦИРОВАННОЙ ФУНКЦИИ ==========
 
 // Вспомогательная функция для безопасности (защита от XSS)
 function escapeHtml(text) {
@@ -596,6 +693,181 @@ async function acceptInvite(groupId) {
     }
 }
 
-// Заглушки для загрузки файлов (пока нет бэкенда для мульти-фото/аудио в этом коде)
-document.getElementById('upload-image-btn').onclick = () => alert('Загрузка изображений требует доработки бэкенда (endpoint /api/chat/vision)');
+// Функция проверки доступности AI модели
+async function checkAIAvailability() {
+    const statusIcon = document.getElementById('ai-status-icon');
+    const statusText = document.getElementById('ai-status-text');
+    
+    if (!statusIcon || !statusText) return;
+    
+    try {
+        // Проверяем доступность Ollama через специальный эндпоинт
+        const response = await fetch('/api/ai/status');
+        const data = await response.json();
+        
+        if (data.available) {
+            statusIcon.textContent = '🟢';
+            statusText.textContent = 'AI готов';
+            statusIcon.title = 'Модель доступна';
+        } else {
+            statusIcon.textContent = '🔴';
+            statusText.textContent = 'AI недоступен';
+            statusIcon.title = data.error || 'Модель не отвечает';
+        }
+    } catch (error) {
+        statusIcon.textContent = '🔴';
+        statusText.textContent = 'ошибка';
+        statusIcon.title = 'Не удалось проверить статус AI';
+        console.error('Ошибка проверки AI статуса:', error);
+    }
+}
+
+// Вызывать при загрузке приложения и каждые 30 секунд
+setInterval(checkAIAvailability, 30000);
+
+// ========== НОВЫЕ ФУНКЦИИ ДЛЯ УПРАВЛЕНИЯ МОДЕЛЯМИ ==========
+
+async function loadModels() {
+   /// """Загружает список доступных моделей и заполняет селекторы"""///
+    try {
+        const response = await fetch('/api/ai/models');
+        const data = await response.json();
+        
+        if (data.available && data.models) {
+            const chatSelect = document.getElementById('chat-model-select');
+            const visionSelect = document.getElementById('vision-model-select');
+            
+            // Заполняем селекторы
+            const optionsHtml = data.models.map(m => 
+                `<option value="${m.name}" title="${m.params}, ${m.size_gb}GB">
+                    ${m.name} (${m.params})
+                </option>`
+            ).join('');
+            
+            chatSelect.innerHTML = optionsHtml;
+            visionSelect.innerHTML = optionsHtml;
+            
+            // Устанавливаем текущие модели
+            if (data.current_chat_model) {
+                chatSelect.value = data.current_chat_model;
+            }
+            if (data.current_vision_model) {
+                visionSelect.value = data.current_vision_model;
+            }
+            
+            // Обработчики смены моделей
+            chatSelect.onchange = async () => {
+                await changeModel(chatSelect.value, false);
+            };
+            
+            visionSelect.onchange = async () => {
+                await changeModel(visionSelect.value, true);
+            };
+            
+            console.log('✅ Models loaded:', data.models.length);
+        } else {
+            console.warn('⚠️ No models available');
+            document.getElementById('chat-model-select').innerHTML = '<option>❌ Нет моделей</option>';
+            document.getElementById('vision-model-select').innerHTML = '<option>❌ Нет моделей</option>';
+        }
+    } catch (error) {
+        console.error('❌ Failed to load models:', error);
+        document.getElementById('chat-model-select').innerHTML = '<option>⚠️ Ошибка</option>';
+        document.getElementById('vision-model-select').innerHTML = '<option>⚠️ Ошибка</option>';
+    }
+}
+
+async function changeModel(modelName, forVision) {
+   /// """Меняет активную модель через API"""///
+    if (!modelName) return;
+    
+    const type = forVision ? 'vision' : 'chat';
+    const select = forVision ? 
+        document.getElementById('vision-model-select') : 
+        document.getElementById('chat-model-select');
+    
+    try {
+        // Показываем загрузку
+        const originalValue = select.value;
+        select.disabled = true;
+        
+        const response = await fetch('/api/ai/models/set', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: modelName,
+                for_vision: forVision
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast(`✅ Модель ${type}: ${modelName}`);
+            console.log(`✅ Model changed (${type}):`, modelName);
+            
+            // Обновляем статус AI
+            checkAIAvailability();
+        } else {
+            throw new Error(result.error || 'Failed to change model');
+        }
+    } catch (error) {
+        console.error(`❌ Failed to change ${type} model:`, error);
+        showToast(`❌ Ошибка смены модели: ${error.message}`);
+        // Возвращаем старое значение
+        select.value = select.options[select.selectedIndex].value;
+    } finally {
+        select.disabled = false;
+    }
+}
+
+// ========== КОНЕЦ НОВЫХ ФУНКЦИЙ ==========
+
+// Функция для смены имени AI (нужно добавить)
+async function setAiName(newName) {
+    if (!state.currentChat) return;
+    try {
+        await apiRequest('/api/chat/set_ai_name', 'POST', {
+            chat_type: state.currentChatType,
+            chat_id: state.currentChat.id,
+            new_name: newName
+        });
+        state.currentChat.ai_name = newName;
+        showToast(`Имя AI изменено на "${newName}"`);
+    } catch(e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
+
+// ========== ДИНАМИЧЕСКАЯ ЗАГРУЗКА МОДУЛЯ ИЗОБРАЖЕНИЙ ==========
+async function loadImageModule() {
+    try {
+        const module = await import('./modules/images.js');
+        module.setupImagePreview();
+        module.setupImageUpload(
+            () => state,  // Передаем функцию, возвращающую state
+            showTypingIndicator,
+            hideTypingIndicator,
+            showToast
+        );
+        console.log('✅ Модуль изображений загружен');
+    } catch (error) {
+        console.error('❌ Ошибка загрузки модуля изображений:', error);
+        // Fallback
+        const uploadBtn = document.getElementById('upload-image-btn');
+        if (uploadBtn) {
+            uploadBtn.onclick = () => alert('Модуль изображений не загружен. Обновите страницу.');
+        }
+    }
+}
+
+// Загружаем модуль после полной загрузки DOM
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadImageModule);
+} else {
+    loadImageModule();
+}
+
+// Заглушки для загрузки файлов
 document.getElementById('upload-audio-btn').onclick = () => alert('Загрузка аудио требует доработки бэкенда (endpoint /api/audio/transcribe-analyze)');

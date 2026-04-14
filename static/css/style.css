@@ -270,7 +270,128 @@ input:checked + .slider:before {
     transform: translateX(18px);
 }
 
+/* индикатор ИИ*/
+.ai-status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.ai-status-available {
+    opacity: 1;
+}
+
+.ai-status-unavailable {
+    opacity: 0.5;
+}
 /* Доп стиль для контента сообщения, чтобы не слипался с именем */
 .msg-content {
     word-wrap: break-word;
+}
+/* Индикатор печатания AI */
+.typing-indicator {
+    margin-bottom: 10px;
+    animation: fadeIn 0.3s ease;
+}
+
+.typing-indicator .message {
+    background: var(--msg-in);
+    border-bottom-left-radius: 2px;
+    padding: 10px 15px;
+}
+
+.typing-indicator .dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #888;
+    margin: 0 2px;
+    animation: typing 1.4s infinite ease-in-out both;
+}
+
+.typing-indicator .dot:nth-child(1) { animation-delay: -0.32s; }
+.typing-indicator .dot:nth-child(2) { animation-delay: -0.16s; }
+.typing-indicator .dot:nth-child(3) { animation-delay: 0s; }
+
+@keyframes typing {
+    0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+    40% { transform: scale(1.2); opacity: 1; }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Дополнительные улучшения для индикаторов */
+.typing-indicator.hidden {
+    display: none;
+}
+
+.ai-status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: 8px;
+    font-size: 0.8rem;
+}
+
+/* Анимация для статуса AI при обновлении */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+.ai-status-indicator .ai-status-icon {
+    transition: all 0.3s ease;
+}
+
+/* Стиль для сообщений AI с именем */
+.message.ai .msg-sender {
+    color: #e53935;
+    font-weight: bold;
+    margin-bottom: 4px;
+    font-size: 0.75rem;
+}
+
+/* Улучшенный скроллбар для messages-area */
+.messages-area::-webkit-scrollbar {
+    width: 6px;
+}
+
+.messages-area::-webkit-scrollbar-track {
+    background: rgba(0,0,0,0.1);
+    border-radius: 3px;
+}
+
+.messages-area::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,0.3);
+    border-radius: 3px;
+}
+
+.messages-area::-webkit-scrollbar-thumb:hover {
+    background: rgba(0,0,0,0.5);
+}
+/* Селектор моделей в хедере */
+.model-selector select {
+    transition: all 0.2s ease;
+    background: white;
+}
+
+.model-selector select:hover {
+    border-color: #3390ec;
+}
+
+.model-selector select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Адаптивность для мобильных */
+@media (max-width: 768px) {
+    .model-selector {
+        display: none !important; /* Скрываем на мобильных для экономии места */
+    }
 }
