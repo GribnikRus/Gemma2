@@ -7,7 +7,7 @@ import eventlet
 eventlet.monkey_patch()
 
 import logging
-from flask import Flask, render_template, session
+from flask import Flask, render_template, session, jsonify
 from flask_socketio import SocketIO, disconnect, join_room, emit
 
 from config import SECRET_KEY, UPLOAD_FOLDER, MAX_CONTENT_LENGTH, LOG_FORMAT, LOG_LEVEL
@@ -133,6 +133,44 @@ register_websocket_events(socketio)
 
 
 # ==================== ЗАПУСК ПРИЛОЖЕНИЯ ====================
+
+@app.route('/api/health', methods=['GET'])
+def healthcheck():
+    """Проверка здоровья сервиса: БД + Ollama"""
+    import requests
+    from sqlalchemy import text
+    from config import OLLAMA_URL
+    
+    status = {'database': 'unknown', 'ollama': 'unknown', 'status': 'unknown'}
+    
+    # Проверка БД
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        status['database'] = 'ok'
+    except Exception as e:
+        status['database'] = f'error: {str(e)}'
+    finally:
+        db.close()
+    
+    # Проверка Ollama
+    try:
+        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        if response.ok:
+            status['ollama'] = 'ok'
+        else:
+            status['ollama'] = f'error: HTTP {response.status_code}'
+    except Exception as e:
+        status['ollama'] = f'error: {str(e)}'
+    
+    # Общий статус
+    if status['database'] == 'ok' and status['ollama'] == 'ok':
+        status['status'] = 'healthy'
+        return jsonify(status), 200
+    else:
+        status['status'] = 'unhealthy'
+        return jsonify(status), 503
+
 
 if __name__ == '__main__':
     logger.info("Starting Gemma-Hub Server on port 5002...")
