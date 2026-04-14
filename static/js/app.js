@@ -409,13 +409,18 @@ function setupEventListeners() {
 }
 
 async function loadChats() {
-    const data = await apiRequest('/api/client/chats');
-    state.chats = data.personal_chats || [];
-    state.groups = data.groups || [];
-    renderList('chats-list', state.chats, 'personal');
-    renderList('groups-list', state.groups, 'group');
-    loadUsers();
-    loadInvitations(); // Загружаем приглашения при загрузке чатов
+    try {
+        const data = await apiRequest('/api/client/chats');
+        console.log('📥 Loaded chats:', data);
+        state.chats = data.personal_chats || [];
+        state.groups = data.groups || [];
+        renderList('chats-list', state.chats, 'personal');
+        renderList('groups-list', state.groups, 'group');
+        loadUsers();
+        loadInvitations(); // Загружаем приглашения при загрузке чатов
+    } catch (error) {
+        console.error('❌ Error loading chats:', error);
+    }
 }
 
 function renderList(id, items, type) {

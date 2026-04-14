@@ -298,7 +298,7 @@ def get_client_personal_chats(db, client_id: int):
     chats = db.query(PersonalChat).filter(
         PersonalChat.owner_id == client_id
     ).order_by(PersonalChat.updated_at.desc()).all()
-    logger.debug(f"Retrieved {len(chats)} personal chats for client {client_id}")
+    logger.info(f"Retrieved {len(chats)} personal chats for client {client_id}")
     return chats
 
 def get_client_groups(db, client_id: int):
@@ -309,9 +309,10 @@ def get_client_groups(db, client_id: int):
     
     group_ids = [m.group_id for m in memberships]
     if not group_ids:
+        logger.info(f"No groups found for client {client_id}")
         return []
     groups = db.query(ChatGroup).filter(ChatGroup.id.in_(group_ids)).all()
-    logger.debug(f"Retrieved {len(groups)} groups for client {client_id}")
+    logger.info(f"Retrieved {len(groups)} groups for client {client_id}")
     return groups
 
 def get_group_history(db, group_id: int, client_id: int, limit: int = 50, last_message_id: int = None):
