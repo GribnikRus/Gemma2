@@ -16,22 +16,42 @@ logger = logging.getLogger("db")
 
 # Настройка движка и сессии
 logger.info(f"Initializing database connection to: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL}")
+
+# Определяем параметры пула в зависимости от типа БД
+engine_kwargs = {
+    "pool_pre_ping": True,      # Проверка соединения перед использованием
+    "pool_recycle": 3600,       # Пересоздание соединений через 1 час
+}
+
+if DATABASE_URL.startswith("postgresql"):
+    engine_kwargs.update({
+        "pool_size": 10,
+        "max_overflow": 20
+    })
+    logger.info("🔧 PostgreSQL detected: pool_size=10, max_overflow=20")
+else:
+    logger.info("🔧 SQLite detected: using default pool settings")
+
 try:
-    engine = create_engine(
-        DATABASE_URL,
-        pool_pre_ping=True,      # Проверка соединения перед использованием
-        pool_recycle=3600,       # Пересоздание соединений через 1 час
-        pool_size=10,            # Размер пула (для PostgreSQL)
-        max_overflow=20          # Дополнительные соединения при пике
-    )
+    engine = create_engine(DATABASE_URL, **engine_kwargs)
     # Тестовое подключение для проверки
     with engine.connect() as conn:
-        result = conn.execute(text("SELECT current_database(), current_user"))
-        db_name, user = result.fetchone()
-        logger.info(f"✅ Successfully connected to PostgreSQL database '{db_name}' as user '{user}'")
-        logger.info(f"   Connection pool settings: pool_size=10, max_overflow=20, pool_recycle=3600")
+        if DATABASE_URL.startswith("postgresql"):
+            result = conn.execute(text("SELECT current_database(), current_user"))
+            db_name, user = result.fetchone()
+            logger.info(f"✅ Successfully connected to PostgreSQL database '{db_name}' as user '{user}'")
+            logger.info(f"   Connection pool settings: pool_size={engine.pool.size()}, max_overflow={engine.pool.max_overflow}, pool_recycle=3600")
+        else:
+            logger.info(f"✅ Successfully connected to SQLite database")
+            logger.info(f"   Database file: {DATABASE_URL.replace('sqlite:///', '')}")
 except Exception as e:
     logger.error(f"❌ Failed to connect to database: {e}")
+    logger.error(f"   DATABASE_URL: {DATABASE_URL}")
+    logger.error(f"   Please check:")
+    logger.error(f"   - PostgreSQL server is running and accessible")
+    logger.error(f"   - Network connectivity (firewall, IP address)")
+    logger.error(f"   - Username and password are correct")
+    logger.error(f"   - Database 'sleep_data_db' exists")
     raise
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
