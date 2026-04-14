@@ -110,29 +110,41 @@ def register_websocket_events(socketio):
         personal_chat_id = data.get('personal_chat_id')
         group_id = data.get('group_id')
 
+        logger.info(f"📨 WebSocket send_message: client_id={client_id}, personal_chat_id={personal_chat_id}, group_id={group_id}, content_length={len(content)}")
+        logger.debug(f"   Message content preview: {content[:100]}...")
+
         if not content:
+            logger.warning(f"❌ Empty message content from client_id={client_id}")
             emit('error', {'message': 'Сообщение не может быть пустым'})
             return
 
         if not client_id:
+            logger.error(f"❌ Unauthenticated WebSocket message attempt")
             emit('error', {'message': 'Требуется авторизация'})
             return
 
         db = SessionLocal()
         try:
+            logger.info(f"   Database session opened for message processing")
+            
             # Определяем тип чата и сохраняем сообщение
             if personal_chat_id:
+                logger.info(f"   Processing PERSONAL chat message (chat_id={personal_chat_id})")
                 # Личный чат
                 chat = get_personal_chat_from_db(db, personal_chat_id, client_id)
                 if not chat:
+                    logger.error(f"❌ Personal chat {personal_chat_id} not found for client {client_id}")
                     emit('error', {'message': 'Чат не найден'})
                     return
+                logger.info(f"   ✅ Personal chat found: title='{chat.title}', ai_enabled={chat.ai_enabled}")
 
                 # Добавляем сообщение пользователя
+                logger.info(f"   Saving user message to database...")
                 user_msg = add_message(
                     db, content, 'client', client_id,
                     personal_chat_id=personal_chat_id, message_type='text'
                 )
+                logger.info(f"   ✅ User message saved: id={user_msg.id}")
 
                 # Получаем имя отправителя
                 user_client = get_client_by_id(db, client_id)
@@ -145,33 +157,43 @@ def register_websocket_events(socketio):
                     'created_at': user_msg.created_at.isoformat(),
                     'personal_chat_id': personal_chat_id
                 }
+                logger.info(f"   Prepared message_data for WebSocket emit: sender_name='{message_data['sender_name']}'")
 
                 # Отправляем сообщение всем в комнате личного чата
+                room_name = f'personal_{personal_chat_id}'
+                logger.info(f"   Emitting 'new_message' to room '{room_name}'...")
                 try:
-                    socketio.emit('new_message', message_data, room=f'personal_{personal_chat_id}')
+                    socketio.emit('new_message', message_data, room=room_name)
+                    logger.info(f"   ✅ WebSocket message emitted successfully to room '{room_name}'")
                 except Exception as ws_error:
                     logger.warning(f"⚠️ WebSocket send failed for user message (client may be disconnected): {ws_error}")
 
                 # Проверяем флаг ai_enabled и триггер обращения к ИИ
                 if chat.ai_enabled and is_ai_triggered(content, chat.ai_name or "Гемма"):
+                    logger.info(f"   🤖 AI trigger detected! ai_name='{chat.ai_name}', generating response...")
                     # Показываем индикатор "печатает" (опционально, если клиент поддерживает)
                     # socketio.emit('ai_typing', {'chat_id': personal_chat_id}, room=f'personal_{personal_chat_id}')
                     
                     # Получаем историю для контекста
                     history = get_personal_chat_history(db, personal_chat_id, client_id, limit=20)
+                    logger.info(f"   Retrieved {len(history)} messages for AI context")
                     context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
 
                     # Отправляем в Ollama
+                    logger.info(f"   Calling Ollama API with model={ollama.model_chat}...")
                     ai_response = ollama.chat(
                         message=f"{context}\nUser: {content}",
                         system_prompt=f"Ты полезный ассистент. Тебя зовут {chat.ai_name or 'Гемма'}. Отвечай кратко и по делу."
                     )
+                    logger.info(f"   ✅ Ollama response received: {len(ai_response)} chars")
 
                     # Добавляем ответ ИИ
+                    logger.info(f"   Saving AI response to database...")
                     ai_msg = add_message(
                         db, ai_response, 'ai', None,
                         personal_chat_id=personal_chat_id, message_type='text'
                     )
+                    logger.info(f"   ✅ AI message saved: id={ai_msg.id}")
 
                     ai_message_data = {
                         'id': ai_msg.id,
@@ -184,25 +206,35 @@ def register_websocket_events(socketio):
                     }
 
                     # Отправляем ответ ИИ
+                    logger.info(f"   Emitting AI response to room '{room_name}'...")
                     try:
-                        socketio.emit('new_message', ai_message_data, room=f'personal_{personal_chat_id}')
+                        socketio.emit('new_message', ai_message_data, room=room_name)
+                        logger.info(f"   ✅ AI WebSocket message emitted successfully")
                     except Exception as ws_error:
                         logger.warning(f"⚠️ WebSocket send failed for AI message (client may be disconnected): {ws_error}")
+                else:
+                    logger.debug(f"   AI not triggered: ai_enabled={chat.ai_enabled}, is_ai_triggered={is_ai_triggered(content, chat.ai_name or 'Гемма')}")
 
             elif group_id:
+                logger.info(f"   Processing GROUP chat message (group_id={group_id})")
                 # Групповой чат
                 if not is_client_member_of_group(db, client_id, group_id):
+                    logger.error(f"❌ Client {client_id} is not a member of group {group_id}")
                     emit('error', {'message': 'Нет доступа к группе'})
                     return
+                logger.info(f"   ✅ Client membership confirmed for group {group_id}")
 
                 # Получаем группу
                 group = get_group_by_id(db, group_id)
+                logger.info(f"   Group found: name='{group.name}', ai_enabled={group.ai_enabled}")
 
                 # Добавляем сообщение пользователя
+                logger.info(f"   Saving user message to database...")
                 user_msg = add_message(
                     db, content, 'client', client_id,
                     group_id=group_id, message_type='text'
                 )
+                logger.info(f"   ✅ User message saved: id={user_msg.id}")
 
                 # Получаем имя отправителя
                 user_client = get_client_by_id(db, client_id)
@@ -215,31 +247,40 @@ def register_websocket_events(socketio):
                     'created_at': user_msg.created_at.isoformat(),
                     'group_id': group_id
                 }
+                logger.info(f"   Prepared message_data for WebSocket emit: sender_name='{message_data['sender_name']}'")
 
                 # ОТПРАВЛЯЕМ СООБЩЕНИЕ ВСЕМ В КОМНАТЕ ГРУППЫ
                 room_name = f'group_{group_id}'
+                logger.info(f"   Emitting 'new_message' to room '{room_name}'...")
                 try:
                     socketio.emit('new_message', message_data, room=room_name)
+                    logger.info(f"   ✅ WebSocket message emitted successfully to room '{room_name}'")
                 except Exception as ws_error:
                     logger.warning(f"⚠️ WebSocket send failed for user message (client may be disconnected): {ws_error}")
 
                 # Проверяем флаг ai_enabled и триггер обращения к ИИ
                 if group and group.ai_enabled and is_ai_triggered(content, group.ai_name or "Гемма"):
+                    logger.info(f"   🤖 AI trigger detected in group! ai_name='{group.ai_name}', generating response...")
                     # Получаем историю для контекста
                     history = get_group_history(db, group_id, client_id, limit=20)
+                    logger.info(f"   Retrieved {len(history)} messages for AI context")
                     context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
 
                     # Отправляем в Ollama
+                    logger.info(f"   Calling Ollama API with model={ollama.model_chat}...")
                     ai_response = ollama.chat(
                         message=f"{context}\nUser: {content}",
                         system_prompt=f"Ты полезный ассистент в групповом чате. Тебя зовут {group.ai_name or 'Гемма'}. Отвечай кратко и по делу."
                     )
+                    logger.info(f"   ✅ Ollama response received: {len(ai_response)} chars")
 
                     # Добавляем ответ ИИ
+                    logger.info(f"   Saving AI response to database...")
                     ai_msg = add_message(
                         db, ai_response, 'ai', None,
                         group_id=group_id, message_type='text'
                     )
+                    logger.info(f"   ✅ AI message saved: id={ai_msg.id}")
 
                     ai_message_data = {
                         'id': ai_msg.id,
@@ -252,17 +293,24 @@ def register_websocket_events(socketio):
                     }
 
                     # Отправляем ответ ИИ всем в группе
+                    logger.info(f"   Emitting AI response to room '{room_name}'...")
                     try:
                         socketio.emit('new_message', ai_message_data, room=room_name)
+                        logger.info(f"   ✅ AI WebSocket message emitted successfully")
                     except Exception as ws_error:
                         logger.warning(f"⚠️ WebSocket send failed for AI message (client may be disconnected): {ws_error}")
+                else:
+                    logger.debug(f"   AI not triggered in group: ai_enabled={group.ai_enabled if group else 'N/A'}")
 
             else:
+                logger.error(f"❌ No chat ID provided: personal_chat_id={personal_chat_id}, group_id={group_id}")
                 emit('error', {'message': 'Необходимо указать personal_chat_id или group_id'})
 
         except Exception as e:
-            logger.error(f"Error in send_message WebSocket: {str(e)}", exc_info=True)
+            logger.error(f"❌ Error in send_message WebSocket: {str(e)}", exc_info=True)
             emit('error', {'message': f'Ошибка отправки: {str(e)}'})
             db.rollback()
+            raise
         finally:
             db.close()
+            logger.debug(f"   Database session closed")

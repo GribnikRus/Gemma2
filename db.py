@@ -4,7 +4,7 @@
 Таблица users зарезервирована для Telegram-бота.
 """
 import logging
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Table
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Table, text
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 from sqlalchemy.sql import func
 import uuid
@@ -15,13 +15,24 @@ logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, LOG_LEVEL))
 logger = logging.getLogger("db")
 
 # Настройка движка и сессии
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,      # Проверка соединения перед использованием
-    pool_recycle=3600,       # Пересоздание соединений через 1 час
-    pool_size=10,            # Размер пула (для PostgreSQL)
-    max_overflow=20          # Дополнительные соединения при пике
-)
+logger.info(f"Initializing database connection to: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL}")
+try:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,      # Проверка соединения перед использованием
+        pool_recycle=3600,       # Пересоздание соединений через 1 час
+        pool_size=10,            # Размер пула (для PostgreSQL)
+        max_overflow=20          # Дополнительные соединения при пике
+    )
+    # Тестовое подключение для проверки
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT current_database(), current_user"))
+        db_name, user = result.fetchone()
+        logger.info(f"✅ Successfully connected to PostgreSQL database '{db_name}' as user '{user}'")
+        logger.info(f"   Connection pool settings: pool_size=10, max_overflow=20, pool_recycle=3600")
+except Exception as e:
+    logger.error(f"❌ Failed to connect to database: {e}")
+    raise
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
