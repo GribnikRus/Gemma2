@@ -16,15 +16,9 @@ from .utils import is_ai_triggered
 
 logger = logging.getLogger("app")
 
-# Получаем ЕДИНЫЙ экземпляр OllamaClient из app.extensions
-ollama = None  # Будет инициализирован в register_websocket_events
-
 
 def register_websocket_events(socketio):
     """Регистрирует все WebSocket обработчики событий (кроме connect)"""
-    global ollama
-    # Получаем ЕДИНЫЙ экземпляр OllamaClient из app.extensions
-    ollama = socketio.app.extensions.get('ollama_client')
     
     # ============================================================
     # ❌ ОБРАБОТЧИК 'connect' УДАЛЁН — он теперь в app.py
@@ -108,6 +102,10 @@ def register_websocket_events(socketio):
     @socketio.on('send_message')
     def handle_send_message(data):
         """Обработка отправки сообщения через WebSocket"""
+        # Получаем клиент Ollama ВНУТРИ обработчика, когда контекст приложения доступен
+        with current_app.app_context():
+            ollama = current_app.extensions.get('ollama_client')
+        
         client_id = session.get('client_id')
         content = data.get('content', '').strip()
         personal_chat_id = data.get('personal_chat_id')

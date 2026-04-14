@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+venv/
+.venv/
+
+# Logs
+logs/
+*.log
+
+# Uploads (большие файлы)
+uploads/
+*.tmp
+
+# EnvironmentПривет, Дружи! 👋
+
+Отличная идея — закоммитить всё и дать кодеру "свежий взгляд". Это правильный рабочий процесс! 🎯
+
+Вот **полный гайд**: команды для Git + промпт для кодера.
+
+---
+
+## 📦 Часть 1: Команды для передачи на Git
+
+### 🔹 Шаг 0: Подготовка (если ещё не инициализирован репозиторий)
+
+```bash
+cd ~/Gemma2
+
+# Инициализация (если нужно)
+git init
+
+# Создай .gitignore (если нет)
+cat > .gitignore << 'EOF'
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Logs
+logs/
+*.log
+
+# Uploads / Temp
+uploads/
+*.tmp
+*.temp
+
+# Environment
+.env
+config_local.py
+*.local.py
+
+# Database (если SQLite)
+*.db
+*.sqlite3
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker (опционально)
+!Dockerfile
+!docker-compose.yml
+*.dockerignore
