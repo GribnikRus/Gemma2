@@ -40,7 +40,7 @@ try:
             result = conn.execute(text("SELECT current_database(), current_user"))
             db_name, user = result.fetchone()
             logger.info(f"✅ Successfully connected to PostgreSQL database '{db_name}' as user '{user}'")
-            logger.info(f"   Connection pool settings: pool_size={engine.pool.size()}, max_overflow={engine.pool.max_overflow}, pool_recycle=3600")
+            logger.info(f"   Connection pool settings: pool_size={engine.pool.size()}, pool_recycle=3600")
         else:
             logger.info(f"✅ Successfully connected to SQLite database")
             logger.info(f"   Database file: {DATABASE_URL.replace('sqlite:///', '')}")
