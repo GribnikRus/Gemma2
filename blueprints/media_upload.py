@@ -10,13 +10,13 @@ from werkzeug.utils import secure_filename
 from datetime import datetime
 
 from db import SessionLocal, create_task_history, update_task_history, add_message, Client
-from ollama_client import OllamaClient
 from .utils import login_required
 
 logger = logging.getLogger("app")
 
 media_upload_bp = Blueprint('media_upload', __name__, url_prefix='/api')
-ollama = OllamaClient()
+# Получаем ЕДИНЫЙ экземпляр OllamaClient из app.extensions
+ollama = None  # Будет инициализирован в каждом запросе через current_app
 
 
 @media_upload_bp.route('/upload/image', methods=['POST'])

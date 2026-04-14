@@ -3,21 +3,21 @@
 Все endpoints с префиксом /api/chat/personal
 """
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 
 from db import (
     SessionLocal, create_personal_chat, get_personal_chat as get_personal_chat_from_db,
     get_personal_chat_history, add_message, get_client_by_id, get_personal_chat_by_id,
     PersonalChat
 )
-from ollama_client import OllamaClient
 from .utils import hash_password_sha256, verify_password_sha256, login_required, get_current_client, is_ai_triggered
 
 logger = logging.getLogger("app")
 
 chat_personal_bp = Blueprint('chat_personal', __name__, url_prefix='/api/chat')
 
-ollama = OllamaClient()
+# Получаем ЕДИНЫЙ экземпляр OllamaClient из app.extensions
+ollama = None  # Будет инициализирован в каждом запросе через current_app
 
 
 @chat_personal_bp.route('/personal/create', methods=['POST'])
@@ -119,6 +119,9 @@ def send_message():
             ai_message = None
             if chat.ai_enabled and is_ai_triggered(content, chat.ai_name or "Гемма"):
                 logger.info(f"   🤖 AI trigger detected! ai_name='{chat.ai_name}', generating response...")
+                # Получаем ЕДИНЫЙ экземпляр OllamaClient из app.extensions
+                ollama = current_app.extensions.get('ollama_client')
+                
                 # Получаем историю для контекста
                 history = get_personal_chat_history(db, personal_chat_id, session['client_id'], limit=20)
                 logger.info(f"   Retrieved {len(history)} messages for AI context")
@@ -194,6 +197,9 @@ def send_message():
             ai_message = None
             if group and group.ai_enabled and is_ai_triggered(content, group.ai_name or "Гемма"):
                 logger.info(f"   🤖 AI trigger detected in group! ai_name='{group.ai_name}', generating response...")
+                # Получаем ЕДИНЫЙ экземпляр OllamaClient из app.extensions
+                ollama = current_app.extensions.get('ollama_client')
+                
                 # Получаем историю для контекста
                 history = get_group_history(db, group_id, session['client_id'], limit=20)
                 logger.info(f"   Retrieved {len(history)} messages for AI context")
@@ -441,6 +447,9 @@ def observe_personal_chat():
 
         # Формируем контекст
         context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
+
+        # Получаем ЕДИНЫЙ экземпляр OllamaClient из app.extensions
+        ollama = current_app.extensions.get('ollama_client')
 
         # Отправляем в Ollama
         system_prompt = f"{role_prompt} Анализируй последние {len(history)} сообщений."

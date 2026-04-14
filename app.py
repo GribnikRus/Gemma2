@@ -46,6 +46,11 @@ except Exception as e:
 # Добавляем socketio в extensions для доступа из блупринтов
 app.extensions['socketio'] = socketio
 
+# Создаем ЕДИНЫЙ экземпляр OllamaClient для всего приложения
+from ollama_client import OllamaClient
+ollama_client = OllamaClient()
+app.extensions['ollama_client'] = ollama_client
+
 
 # ==================== ГЛАВНАЯ СТРАНИЦА ====================
 
