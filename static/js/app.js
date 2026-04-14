@@ -287,7 +287,12 @@ function initAuth() {
             const login = document.getElementById('login-username').value;
             const pass = document.getElementById('login-password').value;
             const res = await apiRequest('/api/auth/login', 'POST', { login, password: pass });
-            state.currentUser = res;
+            // ИСПРАВЛЕНИЕ: добавляем поле id из client_id
+            state.currentUser = {
+                ...res,
+                id: res.client_id,
+                client_id: res.client_id
+            };
             showApp();
         } catch (err) { document.getElementById('login-error').textContent = err.message; }
     };
@@ -307,7 +312,12 @@ function initAuth() {
 async function checkSession() {
     try {
         const user = await apiRequest('/api/auth/me');
-        state.currentUser = user;
+        // ИСПРАВЛЕНИЕ: добавляем поле id из client_id
+        state.currentUser = {
+            ...user,
+            id: user.client_id,  // <-- добавляем эту строку
+            client_id: user.client_id
+        };
         console.log('✅ User loaded:', state.currentUser);
         showApp();
     } catch (e) { 
