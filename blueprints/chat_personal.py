@@ -79,51 +79,66 @@ def send_message():
     from flask import session
     client_ip = request.remote_addr
     client_id = session.get('client_id')
-    logger.info(f"POST /api/chat/send from {client_ip} (client_id={client_id})")
+    logger.info(f"📨 POST /api/chat/send from {client_ip} (client_id={client_id})")
     
     data = request.get_json()
     content = data.get('content', '').strip()
     personal_chat_id = data.get('personal_chat_id')
     group_id = data.get('group_id')
     
+    logger.info(f"   Request params: personal_chat_id={personal_chat_id}, group_id={group_id}, content_length={len(content)}")
+    logger.debug(f"   Content preview: {content[:100]}...")
+    
     if not content:
-        logger.warning(f"Empty message content from {client_ip}")
+        logger.warning(f"❌ Empty message content from {client_ip}")
         return jsonify({'error': 'Сообщение не может быть пустым'}), 400
     
     db = SessionLocal()
     try:
+        logger.info(f"   Database session opened for message processing")
+        
         # Определяем тип чата
         if personal_chat_id:
+            logger.info(f"   Processing PERSONAL chat message (chat_id={personal_chat_id})")
             # Личный чат
             chat = get_personal_chat_from_db(db, personal_chat_id, session['client_id'])
             if not chat:
-                logger.warning(f"Personal chat {personal_chat_id} not found for client {client_id}")
+                logger.error(f"❌ Personal chat {personal_chat_id} not found for client {client_id}")
                 return jsonify({'error': 'Чат не найден'}), 404
+            logger.info(f"   ✅ Personal chat found: title='{chat.title}', ai_enabled={chat.ai_enabled}")
             
             # Добавляем сообщение пользователя
+            logger.info(f"   Saving user message to database...")
             user_msg = add_message(
                 db, content, 'client', session['client_id'],
                 personal_chat_id=personal_chat_id, message_type='text'
             )
+            logger.info(f"   ✅ User message saved: id={user_msg.id}")
             
             # Проверяем флаг ai_enabled и триггер обращения к ИИ
             ai_message = None
             if chat.ai_enabled and is_ai_triggered(content, chat.ai_name or "Гемма"):
+                logger.info(f"   🤖 AI trigger detected! ai_name='{chat.ai_name}', generating response...")
                 # Получаем историю для контекста
                 history = get_personal_chat_history(db, personal_chat_id, session['client_id'], limit=20)
+                logger.info(f"   Retrieved {len(history)} messages for AI context")
                 context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
                 
                 # Отправляем в Ollama
+                logger.info(f"   Calling Ollama API with model={ollama.model_chat}...")
                 ai_response = ollama.chat(
                     message=f"{context}\nUser: {content}",
                     system_prompt=f"Ты полезный ассистент. Тебя зовут {chat.ai_name or 'Гемма'}. Отвечай кратко и по делу."
                 )
+                logger.info(f"   ✅ Ollama response received: {len(ai_response)} chars")
                 
                 # Добавляем ответ ИИ
+                logger.info(f"   Saving AI response to database...")
                 ai_msg = add_message(
                     db, ai_response, 'ai', None,
                     personal_chat_id=personal_chat_id, message_type='text'
                 )
+                logger.info(f"   ✅ AI message saved: id={ai_msg.id}")
                 ai_message = {
                     'id': ai_msg.id,
                     'content': ai_msg.content,
@@ -131,8 +146,10 @@ def send_message():
                     'sender_name': chat.ai_name or 'Гемма',
                     'created_at': ai_msg.created_at.isoformat()
                 }
+            else:
+                logger.debug(f"   AI not triggered: ai_enabled={chat.ai_enabled}")
             
-            logger.info(f"Message sent to personal chat {personal_chat_id}, status=200")
+            logger.info(f"   Message sent to personal chat {personal_chat_id}, status=200")
             
             # Получаем имя отправителя для user_message
             user_client = get_client_by_id(db, session['client_id'])
@@ -147,44 +164,56 @@ def send_message():
             }
             if ai_message:
                 result['ai_message'] = ai_message
+            logger.info(f"   Returning JSON response with user_message + ai_message={ai_message is not None}")
             return jsonify(result)
         
         elif group_id:
+            logger.info(f"   Processing GROUP chat message (group_id={group_id})")
             # Групповой чат - обрабатывается в chat_group модуле
             # Этот код остается здесь для обратной совместимости
             from db import is_client_member_of_group, get_group_by_id, get_group_history
             
             if not is_client_member_of_group(db, session['client_id'], group_id):
-                logger.warning(f"Client {client_id} not member of group {group_id}")
+                logger.error(f"❌ Client {client_id} not member of group {group_id}")
                 return jsonify({'error': 'Нет доступа к группе'}), 403
+            logger.info(f"   ✅ Client membership confirmed for group {group_id}")
 
             # Получаем группу для проверки ai_enabled
             group = get_group_by_id(db, group_id)
+            logger.info(f"   Group found: name='{group.name}', ai_enabled={group.ai_enabled}")
 
             # Добавляем сообщение пользователя
+            logger.info(f"   Saving user message to database...")
             user_msg = add_message(
                 db, content, 'client', session['client_id'],
                 group_id=group_id, message_type='text'
             )
+            logger.info(f"   ✅ User message saved: id={user_msg.id}")
 
             # Проверяем флаг ai_enabled и триггер обращения к ИИ
             ai_message = None
             if group and group.ai_enabled and is_ai_triggered(content, group.ai_name or "Гемма"):
+                logger.info(f"   🤖 AI trigger detected in group! ai_name='{group.ai_name}', generating response...")
                 # Получаем историю для контекста
                 history = get_group_history(db, group_id, session['client_id'], limit=20)
+                logger.info(f"   Retrieved {len(history)} messages for AI context")
                 context = "\n".join([f"{m.sender_type}: {m.content}" for m in history])
 
                 # Отправляем в Ollama
+                logger.info(f"   Calling Ollama API with model={ollama.model_chat}...")
                 ai_response = ollama.chat(
                     message=f"{context}\nUser: {content}",
                     system_prompt=f"Ты полезный ассистент в групповом чате. Тебя зовут {group.ai_name or 'Гемма'}. Отвечай кратко и по делу."
                 )
+                logger.info(f"   ✅ Ollama response received: {len(ai_response)} chars")
 
                 # Добавляем ответ ИИ
+                logger.info(f"   Saving AI response to database...")
                 ai_msg = add_message(
                     db, ai_response, 'ai', None,
                     group_id=group_id, message_type='text'
                 )
+                logger.info(f"   ✅ AI message saved: id={ai_msg.id}")
                 ai_message = {
                     'id': ai_msg.id,
                     'content': ai_msg.content,
@@ -192,8 +221,10 @@ def send_message():
                     'sender_name': group.ai_name or 'Гемма',
                     'created_at': ai_msg.created_at.isoformat()
                 }
+            else:
+                logger.debug(f"   AI not triggered in group: ai_enabled={group.ai_enabled if group else 'N/A'}")
 
-            logger.info(f"Message sent to group {group_id}, status=200")
+            logger.info(f"   Message sent to group {group_id}, status=200")
             
             # Получаем имя отправителя для user_message
             user_client = get_client_by_id(db, session['client_id'])
@@ -208,17 +239,20 @@ def send_message():
             }
             if ai_message:
                 result['ai_message'] = ai_message
+            logger.info(f"   Returning JSON response with user_message + ai_message={ai_message is not None}")
             return jsonify(result)
         
         else:
+            logger.error(f"❌ No chat ID provided: personal_chat_id={personal_chat_id}, group_id={group_id}")
             return jsonify({'error': 'Необходимо указать personal_chat_id или group_id'}), 400
             
     except Exception as e:
         db.rollback()
-        logger.error(f"Error sending message: {str(e)}")
+        logger.error(f"❌ Error sending message: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
     finally:
         db.close()
+        logger.debug(f"   Database session closed")
 
 
 @chat_personal_bp.route('/<int:chat_id>/history', methods=['GET'])
