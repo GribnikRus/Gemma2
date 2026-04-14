@@ -15,7 +15,13 @@ logging.basicConfig(format=LOG_FORMAT, level=getattr(logging, LOG_LEVEL))
 logger = logging.getLogger("db")
 
 # Настройка движка и сессии
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,      # Проверка соединения перед использованием
+    pool_recycle=3600,       # Пересоздание соединений через 1 час
+    pool_size=10,            # Размер пула (для PostgreSQL)
+    max_overflow=20          # Дополнительные соединения при пике
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

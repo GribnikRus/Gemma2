@@ -39,6 +39,18 @@ def upload_image():
         return jsonify({'error': 'Файл не выбран'}), 400
 
     filename = secure_filename(file.filename)
+    if not filename or filename == '':
+        logger.warning(f"Empty/invalid filename from {client_ip}")
+        return jsonify({'error': 'Некорректное имя файла'}), 400
+    
+    # Проверка MIME-type
+    ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp', 'image/gif'}
+    file_mimetype = file.content_type
+    
+    if file_mimetype not in ALLOWED_IMAGE_TYPES:
+        logger.warning(f"Blocked upload: invalid MIME type {file_mimetype}")
+        return jsonify({'error': 'Разрешены только изображения (JPEG, PNG, WebP, GIF)'}), 400
+    
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     unique_filename = f"{timestamp}_{filename}"
     filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
@@ -92,11 +104,26 @@ def chat_vision():
     
     logger.info(f"DEBUG: chat_type={chat_type}, chat_id={chat_id}, prompt={prompt[:50]}")
 
+    # Проверка MIME-type для каждого файла
+    ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp', 'image/gif'}
+    
     images_base64 = []
     saved_filenames = []
     for file in files:
-        if file.filename == '': continue
+        if file.filename == '': 
+            continue
+        
+        # Проверка MIME-type
+        file_mimetype = file.content_type
+        if file_mimetype not in ALLOWED_IMAGE_TYPES:
+            logger.warning(f"Blocked upload: invalid MIME type {file_mimetype} in file {file.filename}")
+            return jsonify({'error': f'Недопустимый формат файла: {file.filename}. Разрешены только JPEG, PNG, WebP, GIF'}), 400
+            
         filename = secure_filename(file.filename)
+        if not filename or filename == '':
+            logger.warning(f"Invalid filename after sanitization: {file.filename}")
+            continue
+            
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         unique_filename = f"{timestamp}_{filename}"
         filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
@@ -181,7 +208,8 @@ def chat_vision():
                             
                             logger.info(f"✅ WebSocket messages sent to room: {room_name}")
                     except Exception as ws_error:
-                        logger.error(f"WebSocket send error: {ws_error}", exc_info=True)
+                        logger.warning(f"⚠️ WebSocket send failed (client may be disconnected): {ws_error}")
+                        # Не делаем rollback — сообщение уже сохранено в БД
 
             logger.info(f"✅ Vision analysis completed for task {bg_task_id}")
             

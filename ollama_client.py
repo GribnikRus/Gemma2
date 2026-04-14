@@ -167,6 +167,43 @@ class OllamaClient:
             logger.error(f"Failed to fetch models: {e}")
             return []
     
+    def analyze_chat_as_observer(self, messages: list, role_prompt: str, analysis_type: str = 'quick') -> str:
+        """Анализ чата в режиме наблюдателя"""
+        model = self.model_chat
+        logger.info(f"Observer analysis: {len(messages)} messages, type={analysis_type}")
+        
+        try:
+            formatted_context = "\n".join([f"{m.get('sender', 'User')}: {m.get('content', '')}" for m in messages])
+            
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": role_prompt},
+                    {"role": "user", "content": f"Проанализируй этот диалог:\n\n{formatted_context}"}
+                ],
+                "options": self._get_options(),
+                "stream": False
+            }
+            
+            response = requests.post(
+                f"{self.host}/api/chat",
+                json=payload,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            content = result.get('message', {}).get('content', '')
+            logger.info(f"Observer analysis completed: {len(content)} chars")
+            return content
+            
+        except requests.exceptions.Timeout:
+            logger.error(f"Observer analysis timeout ({self.timeout}s)")
+            return "⚠️ Таймаут анализа. Попробуйте уменьшить количество сообщений."
+        except Exception as e:
+            logger.error(f"Observer analysis failed: {e}")
+            return f"❌ Ошибка анализа: {str(e)}"
+    
     def set_model(self, model_name: str, for_vision: bool = False) -> bool:
         """Динамическая смена модели"""
         if self.is_model_available(model_name):

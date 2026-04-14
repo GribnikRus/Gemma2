@@ -147,7 +147,10 @@ def register_websocket_events(socketio):
                 }
 
                 # Отправляем сообщение всем в комнате личного чата
-                socketio.emit('new_message', message_data, room=f'personal_{personal_chat_id}')
+                try:
+                    socketio.emit('new_message', message_data, room=f'personal_{personal_chat_id}')
+                except Exception as ws_error:
+                    logger.warning(f"⚠️ WebSocket send failed for user message (client may be disconnected): {ws_error}")
 
                 # Проверяем флаг ai_enabled и триггер обращения к ИИ
                 if chat.ai_enabled and is_ai_triggered(content, chat.ai_name or "Гемма"):
@@ -181,7 +184,10 @@ def register_websocket_events(socketio):
                     }
 
                     # Отправляем ответ ИИ
-                    socketio.emit('new_message', ai_message_data, room=f'personal_{personal_chat_id}')
+                    try:
+                        socketio.emit('new_message', ai_message_data, room=f'personal_{personal_chat_id}')
+                    except Exception as ws_error:
+                        logger.warning(f"⚠️ WebSocket send failed for AI message (client may be disconnected): {ws_error}")
 
             elif group_id:
                 # Групповой чат
@@ -212,7 +218,10 @@ def register_websocket_events(socketio):
 
                 # ОТПРАВЛЯЕМ СООБЩЕНИЕ ВСЕМ В КОМНАТЕ ГРУППЫ
                 room_name = f'group_{group_id}'
-                socketio.emit('new_message', message_data, room=room_name)
+                try:
+                    socketio.emit('new_message', message_data, room=room_name)
+                except Exception as ws_error:
+                    logger.warning(f"⚠️ WebSocket send failed for user message (client may be disconnected): {ws_error}")
 
                 # Проверяем флаг ai_enabled и триггер обращения к ИИ
                 if group and group.ai_enabled and is_ai_triggered(content, group.ai_name or "Гемма"):
@@ -243,7 +252,10 @@ def register_websocket_events(socketio):
                     }
 
                     # Отправляем ответ ИИ всем в группе
-                    socketio.emit('new_message', ai_message_data, room=room_name)
+                    try:
+                        socketio.emit('new_message', ai_message_data, room=room_name)
+                    except Exception as ws_error:
+                        logger.warning(f"⚠️ WebSocket send failed for AI message (client may be disconnected): {ws_error}")
 
             else:
                 emit('error', {'message': 'Необходимо указать personal_chat_id или group_id'})
