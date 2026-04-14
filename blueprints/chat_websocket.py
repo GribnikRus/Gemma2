@@ -12,16 +12,19 @@ from db import (
     get_personal_chat as get_personal_chat_from_db, get_personal_chat_history,
     add_message, get_client_by_id, get_group_by_id, get_group_history, Client
 )
-from ollama_client import OllamaClient
 from .utils import is_ai_triggered
 
 logger = logging.getLogger("app")
 
-ollama = OllamaClient()
+# Получаем ЕДИНЫЙ экземпляр OllamaClient из app.extensions
+ollama = None  # Будет инициализирован в register_websocket_events
 
 
 def register_websocket_events(socketio):
     """Регистрирует все WebSocket обработчики событий (кроме connect)"""
+    global ollama
+    # Получаем ЕДИНЫЙ экземпляр OllamaClient из app.extensions
+    ollama = socketio.app.extensions.get('ollama_client')
     
     # ============================================================
     # ❌ ОБРАБОТЧИК 'connect' УДАЛЁН — он теперь в app.py
