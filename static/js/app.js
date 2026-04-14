@@ -239,11 +239,21 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
     return json;
 }
 
+// Экспорт для использования в login.html
+window.apiRequest = apiRequest;
+
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
-    initAuth();
-    checkSession();
-    setupEventListeners();
+    // Проверяем, находимся ли мы на странице index.html (есть auth-modal)
+    const isIndexPage = document.getElementById('auth-modal');
+    
+    if (isIndexPage) {
+        // Инициализируем только для index.html
+        initAuth();
+        checkSession();
+        setupEventListeners();
+    }
+    // Для login.html инициализация происходит через встроенные скрипты
 });
 
 function initAuth() {

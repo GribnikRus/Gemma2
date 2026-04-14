@@ -130,9 +130,10 @@
         </form>
     </div>
     
-    <script src="/static/js/app.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script type="module" src="/static/js/app.js"></script>
     <script>
-        // Простая логика переключения табов прямо здесь, чтобы не зависеть от app.js при загрузке
+        // Логика переключения табов для login.html
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -145,6 +146,45 @@
                 document.getElementById('register-error').textContent = '';
             });
         });
+
+        // Обработка форм авторизации для login.html
+        document.getElementById('login-form').onsubmit = async (e) => {
+            e.preventDefault();
+            try {
+                const login = document.getElementById('login-username').value;
+                const pass = document.getElementById('login-password').value;
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ login, password: pass })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || 'Ошибка');
+                // Перенаправляем на главную после успешного входа
+                window.location.href = '/';
+            } catch (err) { 
+                document.getElementById('login-error').textContent = err.message; 
+            }
+        };
+
+        document.getElementById('register-form').onsubmit = async (e) => {
+            e.preventDefault();
+            try {
+                const login = document.getElementById('register-username').value;
+                const pass = document.getElementById('register-password').value;
+                const res = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ login, password: pass })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || 'Ошибка');
+                alert('Успешно! Теперь войдите.');
+                document.querySelector('.tab-btn[data-tab="login"]').click();
+            } catch (err) { 
+                document.getElementById('register-error').textContent = err.message; 
+            }
+        };
     </script>
 </body>
 </html>
