@@ -42,11 +42,20 @@ function initSocket() {
             hideTypingIndicator();
         }
         
-        // Проверяем, относится ли сообщение к текущему открытому чату
-        const isGroupMatch = data.group_id && state.currentChatType === 'group' && state.currentChat?.id === data.group_id;
-        const isPersonalMatch = data.personal_chat_id && state.currentChatType === 'personal' && state.currentChat?.id === data.personal_chat_id;
+        // Исправлено: более надежная проверка соответствия чата
+        let isCurrentChat = false;
         
-        if (isGroupMatch || isPersonalMatch) {
+        if (state.currentChat) {
+            if (state.currentChatType === 'group' && data.group_id) {
+                isCurrentChat = state.currentChat.id === data.group_id;
+            } else if (state.currentChatType === 'personal' && data.personal_chat_id) {
+                isCurrentChat = state.currentChat.id === data.personal_chat_id;
+            }
+        }
+        
+        console.log(`Current chat: type=${state.currentChatType}, id=${state.currentChat?.id}, isCurrent=${isCurrentChat}`);
+        
+        if (isCurrentChat) {
             // ✅ Проверяем, нет ли уже такого сообщения (защита от дублей)
             const existingMsg = document.querySelector(`.message[data-msg-id="${data.id}"]`);
             if (existingMsg) {
@@ -59,7 +68,7 @@ function initSocket() {
             renderSingleMessage(data);
         } else {
             // Если чат не открыт, показываем уведомление
-            const chatName = data.chat_name || (state.currentChatType === 'group' ? 'группе' : 'личном чате');
+            const chatName = data.chat_name || (data.group_id ? 'группе' : 'личном чате');
             showToast(`🔔 Новое сообщение в ${chatName}`);
             document.title = '🔔 Новое сообщение!';
             setTimeout(() => { document.title = state.originalTitle; }, 3000);
@@ -123,6 +132,7 @@ function sendMessageViaSocket(content, personalChatId, groupId) {
     return false;
 }
 
+// ИСПРАВЛЕНО: используем id вместо client_id
 function renderSingleMessage(m) {
     const container = document.getElementById('messages-container');
     if (!container) return;
@@ -131,12 +141,16 @@ function renderSingleMessage(m) {
     const existingMsg = document.querySelector(`.message[data-msg-id="${m.id}"]`);
     if (existingMsg) return;
     
-    const isUser = m.sender_type === 'client' && m.sender_id === state.currentUser?.client_id;
+    // ИСПРАВЛЕНО: используем state.currentUser.id (не client_id)
+    const isUser = m.sender_type === 'client' && m.sender_id === state.currentUser?.id;
+    
+    console.log(`📝 Rendering message: isUser=${isUser}, sender_id=${m.sender_id}, currentUser.id=${state.currentUser?.id}`);
+    
     let senderHtml = '';
     
     // Логика имен для групповых чатов
     if (state.currentChatType === 'group' && !isUser && m.sender_name) {
-        senderHtml = `<span class="msg-sender" style="color: #3390ec; font-weight: bold;">${m.sender_name}</span>`;
+        senderHtml = `<span class="msg-sender" style="color: #3390ec; font-weight: bold;">${escapeHtml(m.sender_name)}</span>`;
     } else if (!isUser && m.sender_type === 'ai') {
         senderHtml = `<span class="msg-sender" style="color: #e53935; font-weight: bold;">Gemma AI</span>`;
     }
@@ -294,6 +308,7 @@ async function checkSession() {
     try {
         const user = await apiRequest('/api/auth/me');
         state.currentUser = user;
+        console.log('✅ User loaded:', state.currentUser);
         showApp();
     } catch (e) { 
         console.log('⚠️ No active session, showing auth modal');
@@ -438,13 +453,26 @@ async function loadChats() {
     }
 }
 
+// ИСПРАВЛЕНО: добавлена проверка существования элемента и fallback
 function renderList(id, items, type) {
     const el = document.getElementById(id);
+    if (!el) {
+        console.error(`❌ Element #${id} not found in DOM`);
+        return;
+    }
+    
+    console.log(`📝 Rendering ${items.length} items for ${id}`, items);
+    
+    if (!items || items.length === 0) {
+        el.innerHTML = `<div class="empty-state" style="padding:10px; color:#707579; text-align:center;">Нет ${type === 'personal' ? 'чатов' : 'групп'}</div>`;
+        return;
+    }
+    
     el.innerHTML = items.map(i => `
-        <div class="${type === 'personal' ? 'chat-item' : 'group-item'}" onclick="selectChat(${i.id}, '${type}')">
-            <div class="avatar" style="width:35px; height:35px; font-size:1rem;">${(i.title || i.name)[0]}</div>
+        <div class="${type === 'personal' ? 'chat-item' : 'group-item'}" onclick="window.selectChat(${i.id}, '${type}')">
+            <div class="avatar" style="width:35px; height:35px; font-size:1rem;">${((i.title || i.name) || '?')[0]}</div>
             <div style="flex:1; overflow:hidden;">
-                <div style="font-weight:500;">${i.title || i.name}</div>
+                <div style="font-weight:500;">${escapeHtml(i.title || i.name)}</div>
             </div>
         </div>
     `).join('');
@@ -507,18 +535,18 @@ function renderMessages(msgs) {
     if (!c) return;
 
     // Отладка в консоль
-    console.log("🎨 Отрисовка сообщений. Тип чата:", state.currentChatType, "Мой ID:", state.currentUser ? state.currentUser.client_id : 'нет');
+    console.log("🎨 Отрисовка сообщений. Тип чата:", state.currentChatType, "Мой ID:", state.currentUser ? state.currentUser.id : 'нет');
 
     c.innerHTML = msgs.map(m => {
-        // Проверяем, я ли это написал (сравниваем ID)
-        const isMe = state.currentUser && (m.sender_id === state.currentUser.client_id);
+        // ИСПРАВЛЕНО: используем id вместо client_id
+        const isMe = state.currentUser && (m.sender_id === state.currentUser.id);
         
         let senderHtml = '';
 
         // Логика имен:
         // 1. Если это ГРУППА и пишет НЕ Я -> показываем имя участника
         if (state.currentChatType === 'group' && !isMe && m.sender_name) {
-             senderHtml = `<span class="msg-sender" style="color: #3390ec; font-weight: bold; display:block; margin-bottom:2px; font-size:0.8rem;">${m.sender_name}</span>`;
+             senderHtml = `<span class="msg-sender" style="color: #3390ec; font-weight: bold; display:block; margin-bottom:2px; font-size:0.8rem;">${escapeHtml(m.sender_name)}</span>`;
         } 
         // 2. Если пишет ИИ (в любом чате) -> показываем "Gemma AI"
         else if (m.sender_type === 'ai') {
@@ -631,13 +659,14 @@ async function loadUsers() {
             container.innerHTML = onlineUsers.map(u => 
                 `<li style="padding:5px; display:flex; align-items:center; gap:8px;">
                     <span style="width:10px; height:10px; background:#0f0; border-radius:50%; box-shadow:0 0 5px #0f0;"></span>
-                    <span>${u.login}</span>
+                    <span>${escapeHtml(u.login)}</span>
                 </li>`
             ).join('');
         }
     } catch(e) {
         console.error('Ошибка загрузки пользователей:', e);
-        document.getElementById('users-list-container').innerHTML = '<li style="color:red;">Ошибка загрузки</li>';
+        const container = document.getElementById('users-list-container');
+        if (container) container.innerHTML = '<li style="color:red;">Ошибка загрузки</li>';
     }
 }
 
@@ -676,6 +705,8 @@ async function loadInvitations() {
         const invitations = data.invitations || [];
         const container = document.getElementById('invitations-list');
         
+        if (!container) return;
+        
         if (invitations.length === 0) {
             container.innerHTML = '<p style="color:#707579;font-size:0.9rem;">Нет входящих приглашений</p>';
             return;
@@ -683,7 +714,7 @@ async function loadInvitations() {
         
         container.innerHTML = invitations.map(inv => `
             <div class="chat-item" style="padding:5px;display:flex;justify-content:space-between;align-items:center;">
-                <span>Группа: ${inv.group_name}</span>
+                <span>Группа: ${escapeHtml(inv.group_name)}</span>
                 <button class="btn-sm accept-invite-btn" data-group-id="${inv.group_id}" style="background:#3390ec;color:white;border:none;padding:5px 10px;border-radius:4px;">Принять</button>
             </div>
         `).join('');
@@ -697,7 +728,8 @@ async function loadInvitations() {
         });
     } catch(e) {
         console.error('Ошибка загрузки приглашений:', e);
-        document.getElementById('invitations-list').innerHTML = '<p style="color:red;">Ошибка загрузки</p>';
+        const container = document.getElementById('invitations-list');
+        if (container) container.innerHTML = '<p style="color:red;">Ошибка загрузки</p>';
     }
 }
 
@@ -757,6 +789,8 @@ async function loadModels() {
             const chatSelect = document.getElementById('chat-model-select');
             const visionSelect = document.getElementById('vision-model-select');
             
+            if (!chatSelect || !visionSelect) return;
+            
             // Заполняем селекторы
             const optionsHtml = data.models.map(m => 
                 `<option value="${m.name}" title="${m.params}, ${m.size_gb}GB">
@@ -787,13 +821,17 @@ async function loadModels() {
             console.log('✅ Models loaded:', data.models.length);
         } else {
             console.warn('⚠️ No models available');
-            document.getElementById('chat-model-select').innerHTML = '<option>❌ Нет моделей</option>';
-            document.getElementById('vision-model-select').innerHTML = '<option>❌ Нет моделей</option>';
+            const chatSelect = document.getElementById('chat-model-select');
+            const visionSelect = document.getElementById('vision-model-select');
+            if (chatSelect) chatSelect.innerHTML = '<option>❌ Нет моделей</option>';
+            if (visionSelect) visionSelect.innerHTML = '<option>❌ Нет моделей</option>';
         }
     } catch (error) {
         console.error('❌ Failed to load models:', error);
-        document.getElementById('chat-model-select').innerHTML = '<option>⚠️ Ошибка</option>';
-        document.getElementById('vision-model-select').innerHTML = '<option>⚠️ Ошибка</option>';
+        const chatSelect = document.getElementById('chat-model-select');
+        const visionSelect = document.getElementById('vision-model-select');
+        if (chatSelect) chatSelect.innerHTML = '<option>⚠️ Ошибка</option>';
+        if (visionSelect) visionSelect.innerHTML = '<option>⚠️ Ошибка</option>';
     }
 }
 
@@ -805,6 +843,8 @@ async function changeModel(modelName, forVision) {
     const select = forVision ? 
         document.getElementById('vision-model-select') : 
         document.getElementById('chat-model-select');
+    
+    if (!select) return;
     
     try {
         // Показываем загрузку
@@ -859,7 +899,6 @@ async function setAiName(newName) {
     }
 }
 
-
 // ========== ДИНАМИЧЕСКАЯ ЗАГРУЗКА МОДУЛЯ ИЗОБРАЖЕНИЙ ==========
 async function loadImageModule() {
     try {
@@ -890,4 +929,22 @@ if (document.readyState === 'loading') {
 }
 
 // Заглушки для загрузки файлов
-document.getElementById('upload-audio-btn').onclick = () => alert('Загрузка аудио требует доработки бэкенда (endpoint /api/audio/transcribe-analyze)');
+const audioBtn = document.getElementById('upload-audio-btn');
+if (audioBtn) {
+    audioBtn.onclick = () => alert('Загрузка аудио требует доработки бэкенда (endpoint /api/audio/transcribe-analyze)');
+}
+
+// ========== ГЛОБАЛЬНЫЕ ФУНКЦИИ ДЛЯ HTML ONCLICK ==========
+// ЭТО САМОЕ ВАЖНОЕ - делаем функции доступными из HTML
+window.selectChat = selectChat;
+window.sendMessage = sendMessage;
+window.runObserverAnalysis = runObserverAnalysis;
+window.acceptInvite = acceptInvite;
+window.setAiName = setAiName;
+window.showToast = showToast;
+
+console.log('✅ All global functions registered:', {
+    selectChat: typeof window.selectChat,
+    sendMessage: typeof window.sendMessage,
+    runObserverAnalysis: typeof window.runObserverAnalysis
+});
