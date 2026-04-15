@@ -7,7 +7,7 @@ import eventlet
 eventlet.monkey_patch()
 
 import logging
-from flask import Flask, render_template, session, jsonify
+from flask import Flask, render_template, session, jsonify, redirect
 from flask_socketio import SocketIO, disconnect, join_room, emit
 
 from config import SECRET_KEY, UPLOAD_FOLDER, MAX_CONTENT_LENGTH, LOG_FORMAT, LOG_LEVEL
@@ -22,6 +22,9 @@ app = Flask(__name__)
 app.secret_key = SECRET_KEY
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SECURE'] = False  # True только для HTTPS
 
 # Инициализация SocketIO БЕЗ Redis (упрощённый режим)
 socketio = SocketIO(
@@ -61,6 +64,11 @@ def index():
         return render_template('index.html')
     return render_template('login.html')
 
+
+@app.route('/login')
+def login_page():
+    """Страница входа"""
+    return render_template('login.html')
 
 # ==================== WEBSOCKET: ПОЛНЫЙ ОБРАБОТЧИК CONNECT ====================
 

@@ -75,11 +75,18 @@ def register():
 def login():
     """Вход в систему"""
     client_ip = request.remote_addr
+    logger.info(f"=== LOGIN ATTEMPT ===")
     logger.info(f"POST /api/auth/login from {client_ip}")
     
     data = request.get_json()
     login = data.get('login', '').strip()
     password = data.get('password', '')
+    
+    logger.info(f"Login attempt for user: {login}")
+    
+    if not login or not password:
+        logger.warning(f"Login failed: missing credentials from {client_ip}")
+        return jsonify({'error': 'Логин и пароль обязательны'}), 400
     
     db = SessionLocal()
     try:
@@ -94,7 +101,9 @@ def login():
         session['client_id'] = client.id
         session['login'] = client.login
         
-        logger.info(f"Login successful: {login} (id={client.id}) from {client_ip}")
+        logger.info(f"✅ Login successful: {login} (id={client.id}) from {client_ip}")
+        logger.info(f"Session after login: client_id={session.get('client_id')}, login={session.get('login')}")
+        
         return jsonify({
             'message': 'Вход успешен',
             'client_id': client.id,
@@ -125,6 +134,8 @@ def get_current_user():
     client = get_current_client()
     if not client:
         return jsonify({'error': 'Пользователь не найден'}), 404
+    
+    logger.info(f"GET /api/auth/me: returning user {client.login} (id={client.id})")
     
     return jsonify({
         'client_id': client.id,

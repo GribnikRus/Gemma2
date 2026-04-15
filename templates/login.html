@@ -2,202 +2,211 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gemma Hub - Вход</title>
     <style>
-        :root {
-            --primary: #3390ec;
-            --primary-hover: #2876c4;
-            --bg-gradient: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            --card-bg: #ffffff;
-            --text-main: #222;
-            --text-sec: #707579;
-            --error: #e53935;
-        }
-
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif; }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            background: var(--bg-gradient);
-            height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
             display: flex;
-            align-items: center;
             justify-content: center;
-            padding: 20px;
+            align-items: center;
         }
-
         .login-card {
-            background: var(--card-bg);
-            padding: 40px 30px;
-            border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 400px;
-            text-align: center;
-            animation: fadeIn 0.5s ease;
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 400px;
+            max-width: 90%;
         }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .logo { font-size: 3rem; margin-bottom: 10px; display: block; }
-        h1 { color: var(--text-main); font-size: 1.8rem; margin-bottom: 5px; }
-        .subtitle { color: var(--text-sec); margin-bottom: 30px; font-size: 0.95rem; }
-
-        .tabs { display: flex; background: #f0f2f5; padding: 4px; border-radius: 10px; margin-bottom: 25px; }
-        .tab-btn {
-            flex: 1;
-            padding: 10px;
-            border: none;
-            background: transparent;
-            color: var(--text-sec);
-            font-weight: 600;
-            cursor: pointer;
-            border-radius: 8px;
-            transition: 0.3s;
-        }
-        .tab-btn.active { background: #fff; color: var(--primary); box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-
-        .form-group { margin-bottom: 20px; text-align: left; }
-        label { display: block; margin-bottom: 8px; color: var(--text-main); font-weight: 500; font-size: 0.9rem; }
+        h1 { text-align: center; margin-bottom: 30px; color: #333; }
         input {
             width: 100%;
-            padding: 12px 15px;
+            padding: 12px;
+            margin-bottom: 15px;
             border: 1px solid #ddd;
-            border-radius: 10px;
-            font-size: 1rem;
-            transition: 0.2s;
-            outline: none;
+            border-radius: 8px;
+            font-size: 16px;
         }
-        input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(51, 144, 236, 0.1); }
-
-        .btn-submit {
+        button {
             width: 100%;
-            padding: 14px;
-            background: var(--primary);
+            padding: 12px;
+            background: #667eea;
             color: white;
             border: none;
-            border-radius: 10px;
-            font-size: 1rem;
-            font-weight: 600;
+            border-radius: 8px;
+            font-size: 16px;
             cursor: pointer;
-            transition: 0.2s;
-            margin-top: 10px;
         }
-        .btn-submit:hover { background: var(--primary-hover); transform: translateY(-1px); }
-
-        .error-message { color: var(--error); font-size: 0.85rem; margin-top: 15px; min-height: 20px; }
+        button:hover { background: #5a67d8; }
+        .error { color: red; margin-top: 10px; text-align: center; }
         .hidden { display: none; }
+        .debug {
+            background: #f0f0f0;
+            padding: 10px;
+            margin-top: 20px;
+            font-size: 12px;
+            border-radius: 8px;
+            color: #333;
+            word-break: break-all;
+        }
     </style>
 </head>
 <body>
     <div class="login-card">
-        <span class="logo">🤖</span>
-        <h1>Gemma Hub</h1>
-        <p class="subtitle">Ваш персональный AI ассистент</p>
+        <h1>🤖 Gemma Hub</h1>
         
-        <div class="tabs">
-            <button class="tab-btn active" data-tab="login">Вход</button>
-            <button class="tab-btn" data-tab="register">Регистрация</button>
+        <div id="login-panel">
+            <input type="text" id="login-username" placeholder="Логин" value="Gribnik1">
+            <input type="password" id="login-password" placeholder="Пароль">
+            <button id="login-btn">Войти</button>
+            <div id="login-error" class="error"></div>
         </div>
         
-        <form id="login-form">
-            <div class="form-group">
-                <label for="login-username">Логин</label>
-                <input type="text" id="login-username" placeholder="Введите логин" required autocomplete="username">
-            </div>
-            <div class="form-group">
-                <label for="login-password">Пароль</label>
-                <input type="password" id="login-password" placeholder="Введите пароль" required autocomplete="current-password">
-            </div>
-            <button type="submit" class="btn-submit">Войти в аккаунт</button>
-            <div id="login-error" class="error-message"></div>
-        </form>
+        <div id="register-panel" style="margin-top: 20px; text-align: center;">
+            <p>Нет аккаунта? <button id="show-register" style="width: auto; padding: 5px 10px;">Зарегистрироваться</button></p>
+        </div>
         
-        <form id="register-form" class="hidden">
-            <div class="form-group">
-                <label for="register-username">Придумайте логин</label>
-                <input type="text" id="register-username" placeholder="Только латиница и цифры" required minlength="3" autocomplete="username">
-            </div>
-            <div class="form-group">
-                <label for="register-password">Придумайте пароль</label>
-                <input type="password" id="register-password" placeholder="Минимум 6 символов" required minlength="6" autocomplete="new-password">
-            </div>
-            <button type="submit" class="btn-submit">Создать аккаунт</button>
-            <div id="register-error" class="error-message"></div>
-        </form>
+        <div id="register-form" class="hidden" style="margin-top: 20px;">
+            <input type="text" id="reg-username" placeholder="Логин (мин 3 символа)">
+            <input type="password" id="reg-password" placeholder="Пароль (мин 6 символов)">
+            <button id="register-btn">Зарегистрироваться</button>
+            <div id="register-error" class="error"></div>
+            <button id="back-to-login" style="margin-top: 10px; background: #ccc;">Назад</button>
+        </div>
+        
+        <div class="debug" id="debug-info">
+            Проверка соединения...
+        </div>
     </div>
-    
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script type="module" src="/static/js/app.js"></script>
+
     <script>
-        // Логика переключения табов для login.html
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                const tab = btn.dataset.tab;
-                document.getElementById('login-form').classList.toggle('hidden', tab !== 'login');
-                document.getElementById('register-form').classList.toggle('hidden', tab !== 'register');
-                // Очистка ошибок
-                document.getElementById('login-error').textContent = '';
-                document.getElementById('register-error').textContent = '';
-            });
-        });
-
-        // Обработка форм авторизации для login.html
-        document.getElementById('login-form').onsubmit = async (e) => {
-            e.preventDefault();
+        const debugDiv = document.getElementById('debug-info');
+        
+        function logDebug(msg) {
+            console.log(msg);
+            debugDiv.innerHTML += '<br>' + msg;
+        }
+        
+        logDebug('=== PAGE LOADED ===');
+        logDebug('Current URL: ' + window.location.href);
+        
+        // Проверка соединения с сервером
+        async function testConnection() {
+            logDebug('Testing connection to /api/auth/me...');
             try {
-                const login = document.getElementById('login-username').value;
-                const pass = document.getElementById('login-password').value;
-                const res = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ login, password: pass })
-                });
-                const json = await res.json();
-                if (!res.ok) throw new Error(json.error || 'Ошибка');
-                // Перенаправляем на главную после успешного входа
-                window.location.href = '/';
-            } catch (err) { 
-                document.getElementById('login-error').textContent = err.message; 
+                const response = await fetch('/api/auth/me');
+                logDebug('Response status: ' + response.status);
+                if (response.ok) {
+                    const data = await response.json();
+                    logDebug('✅ Already logged in as: ' + data.login);
+                    logDebug('Redirecting to /');
+                    window.location.href = '/';
+                } else {
+                    logDebug('❌ Not logged in');
+                }
+            } catch (err) {
+                logDebug('❌ Connection failed: ' + err.message);
+                logDebug('Trying absolute URL...');
+                try {
+                    const response = await fetch(window.location.origin + '/api/auth/me');
+                    logDebug('Absolute URL response status: ' + response.status);
+                } catch (err2) {
+                    logDebug('❌ Absolute URL also failed: ' + err2.message);
+                }
             }
+        }
+        
+        // Переключение панелей
+        document.getElementById('show-register').onclick = () => {
+            document.getElementById('login-panel').style.display = 'none';
+            document.getElementById('register-form').classList.remove('hidden');
         };
-
-        document.getElementById('register-form').onsubmit = async (e) => {
-            e.preventDefault();
+        
+        document.getElementById('back-to-login').onclick = () => {
+            document.getElementById('login-panel').style.display = 'block';
+            document.getElementById('register-form').classList.add('hidden');
+        };
+        
+        // Логин
+        document.getElementById('login-btn').onclick = async () => {
+            const login = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+            const errorDiv = document.getElementById('login-error');
+            
+            logDebug('=== LOGIN ATTEMPT ===');
+            logDebug('Login: ' + login);
+            
+            errorDiv.textContent = 'Вход...';
+            
             try {
-                const login = document.getElementById('register-username').value;
-                const pass = document.getElementById('register-password').value;
-                const res = await fetch('/api/auth/register', {
+                const response = await fetch('/api/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ login, password: pass })
+                    body: JSON.stringify({ login, password })
                 });
-                const json = await res.json();
-                if (!res.ok) throw new Error(json.error || 'Ошибка');
-                alert('Успешно! Теперь войдите.');
-                document.querySelector('.tab-btn[data-tab="login"]').click();
-            } catch (err) { 
-                document.getElementById('register-error').textContent = err.message; 
+                
+                logDebug('Response status: ' + response.status);
+                const data = await response.json();
+                logDebug('Response data: ' + JSON.stringify(data));
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Ошибка входа');
+                }
+                
+                logDebug('✅ Login successful, redirecting to /');
+                window.location.href = '/';
+                
+            } catch (err) {
+                logDebug('❌ Login error: ' + err.message);
+                errorDiv.textContent = err.message;
             }
         };
         
-        // Проверяем сессию при загрузке login.html - если уже авторизован, редиректим на главную
-        (async function checkExistingSession() {
-            try {
-                const res = await fetch('/api/auth/me');
-                if (res.ok) {
-                    // Уже авторизован, идём на главную
-                    window.location.href = '/';
-                }
-            } catch (e) {
-                // Нет активной сессии, остаёмся на странице входа
+        // Регистрация
+        document.getElementById('register-btn').onclick = async () => {
+            const login = document.getElementById('reg-username').value;
+            const password = document.getElementById('reg-password').value;
+            const errorDiv = document.getElementById('register-error');
+            
+            if (login.length < 3) {
+                errorDiv.textContent = 'Логин должен быть минимум 3 символа';
+                return;
             }
-        })();
+            if (password.length < 6) {
+                errorDiv.textContent = 'Пароль должен быть минимум 6 символов';
+                return;
+            }
+            
+            errorDiv.textContent = 'Регистрация...';
+            
+            try {
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ login, password })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Ошибка регистрации');
+                }
+                
+                alert('Регистрация успешна! Теперь войдите.');
+                document.getElementById('back-to-login').click();
+                document.getElementById('login-username').value = login;
+                
+            } catch (err) {
+                errorDiv.textContent = err.message;
+            }
+        };
+        
+        // Запуск проверки
+        testConnection();
     </script>
 </body>
 </html>

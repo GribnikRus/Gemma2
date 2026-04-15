@@ -11,28 +11,31 @@ const state = {
     appInitialized: false
 };
 
+let initPromise = null;
+
 // ========== ИНИЦИАЛИЗАЦИЯ ==========
 document.addEventListener('DOMContentLoaded', () => {
-    // Просто запускаем приложение, считая что пользователь уже авторизован
-    initApp();
+    console.log('=== DOM CONTENT LOADED ===');
+    // Предотвращаем множественные вызовы
+    if (!initPromise) {
+        initPromise = initApp();
+    }
 });
 
-let initInProgress = false; // Защита от повторных вызовов
-
 async function initApp() {
-    // Защита от повторного вызова
-    if (initInProgress) {
-        console.log('Init already in progress, skipping');
-        return;
-    }
-    initInProgress = true;
-    
     console.log('=== INIT APP START ===');
     
     try {
-        // Загружаем информацию о текущем пользователе
+        // Загружаем пользователя
         console.log('Fetching /api/auth/me...');
-        const user = await apiRequest('/api/auth/me');
+        const response = await fetch('/api/auth/me');
+        console.log('Response status:', response.status);
+        
+        if (!response.ok) {
+            throw new Error('Not authenticated');
+        }
+        
+        const user = await response.json();
         console.log('User data received:', user);
         
         state.currentUser = {
@@ -45,103 +48,125 @@ async function initApp() {
         // Показываем интерфейс
         showApp();
         console.log('=== INIT APP FINISHED ===');
+        return true;
         
     } catch (e) { 
         console.error('❌ Init error:', e);
         console.log('Redirecting to /login');
         window.location.href = '/login';
-    } finally {
-        initInProgress = false;
+        return false;
     }
 }
+
 function showApp() {
-    if (state.appInitialized) return;
+    if (state.appInitialized) {
+        console.log('App already initialized, skipping');
+        return;
+    }
     state.appInitialized = true;
     
-    document.getElementById('user-display').textContent = state.currentUser.login;
-    document.getElementById('user-avatar').textContent = state.currentUser.login[0].toUpperCase();
+    console.log('=== SHOW APP START ===');
     
+    // Проверяем существование элементов
+    const userDisplay = document.getElementById('user-display');
+    const userAvatar = document.getElementById('user-avatar');
+    const appContainer = document.getElementById('app-container');
+    
+    if (userDisplay) userDisplay.textContent = state.currentUser.login;
+    if (userAvatar) userAvatar.textContent = state.currentUser.login[0].toUpperCase();
+    if (appContainer) appContainer.style.display = 'flex';
+    
+    console.log('User display updated');
+    
+    // Запускаем все компоненты
     initSocket();
     loadChats();
     checkAIAvailability();
     loadModels();
     setupEventListeners();
+    
+    console.log('=== SHOW APP FINISHED ===');
 }
 
 // ========== WEBSOCKET ==========
 function initSocket() {
-    state.socket = io();
-    
-    state.socket.on('connect', () => {
-        console.log('✅ WebSocket connected');
-        loadUsers();
-    });
-    
-    state.socket.on('disconnect', () => {
-        console.log('⚠️ WebSocket disconnected');
-    });
-    
-    state.socket.on('connect_error', (error) => {
-        console.error('❌ WebSocket connection error:', error);
-    });
-    
-    state.socket.on('new_message', (data) => {
-        console.log('📨 New message received:', data);
+    console.log('=== INIT SOCKET ===');
+    try {
+        state.socket = io();
         
-        if (data.sender_type === 'ai') {
-            hideTypingIndicator();
-        }
+        state.socket.on('connect', () => {
+            console.log('✅ WebSocket connected');
+            loadUsers();
+        });
         
-        let isCurrentChat = false;
-        if (state.currentChat) {
-            if (state.currentChatType === 'group' && data.group_id) {
-                isCurrentChat = state.currentChat.id === data.group_id;
-            } else if (state.currentChatType === 'personal' && data.personal_chat_id) {
-                isCurrentChat = state.currentChat.id === data.personal_chat_id;
+        state.socket.on('disconnect', () => {
+            console.log('⚠️ WebSocket disconnected');
+        });
+        
+        state.socket.on('connect_error', (error) => {
+            console.error('❌ WebSocket connection error:', error);
+        });
+        
+        state.socket.on('new_message', (data) => {
+            console.log('📨 New message received:', data);
+            
+            if (data.sender_type === 'ai') {
+                hideTypingIndicator();
             }
-        }
-        
-        if (isCurrentChat) {
-            const existingMsg = document.querySelector(`.message[data-msg-id="${data.id}"]`);
-            if (!existingMsg) {
-                renderSingleMessage(data);
+            
+            let isCurrentChat = false;
+            if (state.currentChat) {
+                if (state.currentChatType === 'group' && data.group_id) {
+                    isCurrentChat = state.currentChat.id === data.group_id;
+                } else if (state.currentChatType === 'personal' && data.personal_chat_id) {
+                    isCurrentChat = state.currentChat.id === data.personal_chat_id;
+                }
             }
-        } else {
-            const chatName = data.chat_name || (data.group_id ? 'группе' : 'личном чате');
-            showToast(`🔔 Новое сообщение в ${chatName}`);
-            document.title = '🔔 Новое сообщение!';
-            setTimeout(() => { document.title = state.originalTitle; }, 3000);
-        }
-    });
-    
-    state.socket.on('user_joined', (data) => {
-        console.log('👤 User joined:', data);
-        loadUsers();
-        if (state.currentChatType === 'group' && state.currentChat?.id === data.group_id) {
-            updateMembersList();
-        }
-    });
-    
-    state.socket.on('user_left', (data) => {
-        console.log('👋 User left:', data);
-        loadUsers();
-        if (state.currentChatType === 'group' && state.currentChat?.id === data.group_id) {
-            updateMembersList();
-        }
-    });
-    
-    state.socket.on('joined_group', (data) => {
-        console.log(`✅ Joined group room: group_${data.group_id}`);
-    });
-    
-    state.socket.on('joined_personal', (data) => {
-        console.log(`✅ Joined personal chat room: personal_${data.personal_chat_id}`);
-    });
-    
-    state.socket.on('error', (data) => {
-        console.error('❌ WebSocket error:', data.message);
-        showToast(`⚠️ ${data.message}`);
-    });
+            
+            if (isCurrentChat) {
+                const existingMsg = document.querySelector(`.message[data-msg-id="${data.id}"]`);
+                if (!existingMsg) {
+                    renderSingleMessage(data);
+                }
+            } else {
+                const chatName = data.chat_name || (data.group_id ? 'группе' : 'личном чате');
+                showToast(`🔔 Новое сообщение в ${chatName}`);
+                document.title = '🔔 Новое сообщение!';
+                setTimeout(() => { document.title = state.originalTitle; }, 3000);
+            }
+        });
+        
+        state.socket.on('user_joined', (data) => {
+            console.log('👤 User joined:', data);
+            loadUsers();
+            if (state.currentChatType === 'group' && state.currentChat?.id === data.group_id) {
+                updateMembersList();
+            }
+        });
+        
+        state.socket.on('user_left', (data) => {
+            console.log('👋 User left:', data);
+            loadUsers();
+            if (state.currentChatType === 'group' && state.currentChat?.id === data.group_id) {
+                updateMembersList();
+            }
+        });
+        
+        state.socket.on('joined_group', (data) => {
+            console.log(`✅ Joined group room: group_${data.group_id}`);
+        });
+        
+        state.socket.on('joined_personal', (data) => {
+            console.log(`✅ Joined personal chat room: personal_${data.personal_chat_id}`);
+        });
+        
+        state.socket.on('error', (data) => {
+            console.error('❌ WebSocket error:', data.message);
+            showToast(`⚠️ ${data.message}`);
+        });
+    } catch (err) {
+        console.error('Socket init error:', err);
+    }
 }
 
 function joinGroupRoom(groupId) {
@@ -280,7 +305,8 @@ async function selectChat(id, type) {
         const data = await apiRequest(type === 'personal' ? `/api/chat/personal/${id}` : `/api/group/${id}`);
         state.currentChat = type === 'personal' ? data.chat : data.group;
         
-        document.getElementById('current-chat-title').textContent = state.currentChat.title || state.currentChat.name;
+        const titleElem = document.getElementById('current-chat-title');
+        if (titleElem) titleElem.textContent = state.currentChat.title || state.currentChat.name;
         
         const aiToggle = document.getElementById('ai-enabled-toggle');
         if (aiToggle && state.currentChat) {
@@ -295,20 +321,25 @@ async function selectChat(id, type) {
             joinPersonalRoom(id);
         }
         
-        document.getElementById('sidebar').classList.remove('open');
-        document.getElementById('overlay').classList.remove('active');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('overlay');
+        if (sidebar) sidebar.classList.remove('open');
+        if (overlay) overlay.classList.remove('active');
         
         const membersSec = document.getElementById('members-section');
         if (type === 'group') {
-            membersSec.classList.remove('hidden');
+            if (membersSec) membersSec.classList.remove('hidden');
             if (data.members) {
-                document.getElementById('members-list').innerHTML = data.members.map(m => 
-                    `<div class="chat-item" style="padding:5px;"><div class="avatar" style="width:25px;height:25px;font-size:0.7rem">${escapeHtml(m.login[0])}</div> ${escapeHtml(m.login)}</div>`
-                ).join('');
+                const membersList = document.getElementById('members-list');
+                if (membersList) {
+                    membersList.innerHTML = data.members.map(m => 
+                        `<div class="chat-item" style="padding:5px;"><div class="avatar" style="width:25px;height:25px;font-size:0.7rem">${escapeHtml(m.login[0])}</div> ${escapeHtml(m.login)}</div>`
+                    ).join('');
+                }
             }
             loadInvitations();
         } else {
-            membersSec.classList.add('hidden');
+            if (membersSec) membersSec.classList.add('hidden');
         }
     } catch(e) { 
         console.error('Error selecting chat:', e);
@@ -390,7 +421,7 @@ function showTypingIndicator() {
     }
     indicator.classList.remove('hidden');
     const container = document.getElementById('messages-container');
-    container.scrollTop = container.scrollHeight;
+    if (container) container.scrollTop = container.scrollHeight;
 }
 
 function hideTypingIndicator() {
@@ -446,7 +477,8 @@ function showToast(message) {
 
 function switchMode(mode) {
     document.querySelectorAll('.input-wrapper').forEach(el => el.classList.add('hidden'));
-    document.getElementById(`${mode}-input-container`).classList.remove('hidden');
+    const container = document.getElementById(`${mode}-input-container`);
+    if (container) container.classList.remove('hidden');
 }
 
 async function loadUsers() {
@@ -469,8 +501,8 @@ async function runObserverAnalysis() {
     const role = document.getElementById('observer-role').value;
     const resBox = document.getElementById('observer-results-container');
     const resText = document.getElementById('observer-analysis-result');
-    resBox.classList.remove('hidden');
-    resText.textContent = 'Анализирую...';
+    if (resBox) resBox.classList.remove('hidden');
+    if (resText) resText.textContent = 'Анализирую...';
     try {
         let res;
         if(state.currentChatType === 'group') {
@@ -478,9 +510,9 @@ async function runObserverAnalysis() {
         } else {
             res = await apiRequest('/api/chat/observe', 'POST', { personal_chat_id: state.currentChat.id, role_prompt: role });
         }
-        resText.textContent = res.analysis || res.result;
+        if (resText) resText.textContent = res.analysis || res.result;
     } catch(e) {
-        resText.textContent = 'Ошибка: ' + e.message;
+        if (resText) resText.textContent = 'Ошибка: ' + e.message;
     }
 }
 
@@ -608,82 +640,126 @@ function setupEventListeners() {
     const rightPanel = document.getElementById('right-panel');
     const overlay = document.getElementById('overlay');
     
-    document.getElementById('menu-toggle').onclick = () => {
-        sidebar.classList.toggle('open');
-        overlay.classList.toggle('active');
-        rightPanel.classList.remove('open');
-    };
-    document.getElementById('info-toggle').onclick = () => {
-        rightPanel.classList.toggle('open');
-        sidebar.classList.remove('open');
-    };
-    document.getElementById('close-right-panel').onclick = () => {
-        rightPanel.classList.remove('open');
-    };
-    overlay.onclick = () => {
-        sidebar.classList.remove('open');
-        rightPanel.classList.remove('open');
-        overlay.classList.remove('active');
-    };
-    document.getElementById('send-btn').onclick = sendMessage;
-    document.getElementById('message-input').onkeypress = (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-    };
+    const menuToggle = document.getElementById('menu-toggle');
+    if (menuToggle) {
+        menuToggle.onclick = () => {
+            if (sidebar) sidebar.classList.toggle('open');
+            if (overlay) overlay.classList.toggle('active');
+            if (rightPanel) rightPanel.classList.remove('open');
+        };
+    }
+    
+    const infoToggle = document.getElementById('info-toggle');
+    if (infoToggle) {
+        infoToggle.onclick = () => {
+            if (rightPanel) rightPanel.classList.toggle('open');
+            if (sidebar) sidebar.classList.remove('open');
+        };
+    }
+    
+    const closeRightPanel = document.getElementById('close-right-panel');
+    if (closeRightPanel) {
+        closeRightPanel.onclick = () => {
+            if (rightPanel) rightPanel.classList.remove('open');
+        };
+    }
+    
+    if (overlay) {
+        overlay.onclick = () => {
+            if (sidebar) sidebar.classList.remove('open');
+            if (rightPanel) rightPanel.classList.remove('open');
+            overlay.classList.remove('active');
+        };
+    }
+    
+    const sendBtn = document.getElementById('send-btn');
+    if (sendBtn) sendBtn.onclick = sendMessage;
+    
+    const messageInput = document.getElementById('message-input');
+    if (messageInput) {
+        messageInput.onkeypress = (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+        };
+    }
+    
     document.querySelectorAll('.tool-btn').forEach(btn => {
         btn.onclick = () => {
             document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             switchMode(btn.dataset.mode);
-            if (btn.dataset.mode === 'observer') {
+            if (btn.dataset.mode === 'observer' && rightPanel) {
                 rightPanel.classList.add('open');
-                if (window.innerWidth <= 768) overlay.classList.add('active');
+                if (window.innerWidth <= 768 && overlay) overlay.classList.add('active');
             }
         };
     });
-    document.getElementById('logout-btn').onclick = () => {
-        stopMessagePolling();
-        if (state.socket && state.socket.connected) state.socket.disconnect();
-        window.location.href = '/login';
-    };
-    document.getElementById('new-chat-btn').onclick = async () => {
-        const login = prompt('Введите логин пользователя:');
-        if (!login || !login.trim()) return;
-        try {
-            const chat = await apiRequest('/api/chat/personal/create', 'POST', { partner_login: login.trim() });
-            loadChats();
-            selectChat(chat.id, 'personal');
-        } catch(e) { alert(e.message); }
-    };
-    document.getElementById('ai-enabled-toggle').onchange = async (e) => {
-        if(!state.currentChat) return;
-        try {
-            await apiRequest('/api/chat/toggle_ai', 'POST', {
-                chat_type: state.currentChatType,
-                chat_id: state.currentChat.id
-            });
-        } catch(err) { alert('Ошибка переключения ИИ'); e.target.checked = !e.target.checked; }
-    };
-    document.getElementById('analyze-btn').onclick = runObserverAnalysis;
-    document.getElementById('invite-user-btn').onclick = async () => {
-        const login = document.getElementById('invite-login-input').value;
-        if(!login || !state.currentChat) return;
-        try {
-            await apiRequest('/api/group/invite', 'POST', { group_id: state.currentChat.id, login });
-            alert('Приглашено!');
-            document.getElementById('invite-login-input').value = '';
-        } catch(e) { alert(e.message); }
-    };
-    document.getElementById('create-group-btn').onclick = async () => {
-        const nameInput = document.getElementById('new-group-name');
-        const name = nameInput.value.trim();
-        if(!name) return alert('Введите название группы');
-        try {
-            const group = await apiRequest('/api/group/create', 'POST', { name });
-            alert(`Группа "${group.name}" создана!`);
-            nameInput.value = '';
-            loadChats();
-        } catch(e) { alert(e.message); }
-    };
+    
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.onclick = () => {
+            stopMessagePolling();
+            if (state.socket && state.socket.connected) state.socket.disconnect();
+            window.location.href = '/login';
+        };
+    }
+    
+    const newChatBtn = document.getElementById('new-chat-btn');
+    if (newChatBtn) {
+        newChatBtn.onclick = async () => {
+            const login = prompt('Введите логин пользователя:');
+            if (!login || !login.trim()) return;
+            try {
+                const chat = await apiRequest('/api/chat/personal/create', 'POST', { partner_login: login.trim() });
+                loadChats();
+                selectChat(chat.id, 'personal');
+            } catch(e) { alert(e.message); }
+        };
+    }
+    
+    const aiToggle = document.getElementById('ai-enabled-toggle');
+    if (aiToggle) {
+        aiToggle.onchange = async (e) => {
+            if(!state.currentChat) return;
+            try {
+                await apiRequest('/api/chat/toggle_ai', 'POST', {
+                    chat_type: state.currentChatType,
+                    chat_id: state.currentChat.id
+                });
+            } catch(err) { alert('Ошибка переключения ИИ'); e.target.checked = !e.target.checked; }
+        };
+    }
+    
+    const analyzeBtn = document.getElementById('analyze-btn');
+    if (analyzeBtn) analyzeBtn.onclick = runObserverAnalysis;
+    
+    const inviteUserBtn = document.getElementById('invite-user-btn');
+    if (inviteUserBtn) {
+        inviteUserBtn.onclick = async () => {
+            const login = document.getElementById('invite-login-input')?.value;
+            if(!login || !state.currentChat) return;
+            try {
+                await apiRequest('/api/group/invite', 'POST', { group_id: state.currentChat.id, login });
+                alert('Приглашено!');
+                const inviteInput = document.getElementById('invite-login-input');
+                if (inviteInput) inviteInput.value = '';
+            } catch(e) { alert(e.message); }
+        };
+    }
+    
+    const createGroupBtn = document.getElementById('create-group-btn');
+    if (createGroupBtn) {
+        createGroupBtn.onclick = async () => {
+            const nameInput = document.getElementById('new-group-name');
+            const name = nameInput?.value.trim();
+            if(!name) return alert('Введите название группы');
+            try {
+                const group = await apiRequest('/api/group/create', 'POST', { name });
+                alert(`Группа "${group.name}" создана!`);
+                if (nameInput) nameInput.value = '';
+                loadChats();
+            } catch(e) { alert(e.message); }
+        };
+    }
 }
 
 setInterval(checkAIAvailability, 30000);
