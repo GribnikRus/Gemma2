@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Gemma Hub</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="app-container">
+        <!-- Затемнение фона -->
+        <div class="overlay" id="overlay"></div>
+
+        <!-- ==================== ЛЕВАЯ ПАНЕЛЬ (СПИСОК ЧАТОВ) ==================== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="user-profile">
+                    <div class="avatar" id="user-avatar">U</div>
+                    <div class="user-info">
+                        <div class="user-name" id="user-display">User</div>
+                        <div class="user-status">Online</div>
+                    </div>
+                </div>
+                <button id="logout-btn" class="icon-btn" title="Выйти">🚪</button>
+            </div>
+
+            <!-- Поиск -->
+            <div class="search-container">
+                <input type="text" class="search-input" placeholder="Поиск..." id="search-input">
+            </div>
+
+            <!-- Список чатов -->
+            <div class="chat-list-container">
+                <div class="section-title">ЧАТЫ</div>
+                <div id="chats-list"></div>
+
+                <div class="section-title">ГРУППЫ</div>
+                <div id="groups-list"></div>
+
+                <!-- Форма создания группы -->
+                <div class="create-group-form">
+                    <input type="text" id="new-group-name" placeholder="Название группы">
+                    <button id="create-group-btn" class="btn-sm">Создать</button>
+                </div>
+
+                <div class="section-title">ОНЛАЙН</div>
+                <ul id="users-list-container" class="online-list"></ul>
+            </div>
+        </aside>
+
+        <!-- ==================== ОСНОВНАЯ ОБЛАСТЬ ЧАТА ==================== -->
+        <main class="main-chat">
+            <!-- Шапка чата -->
+            <header class="chat-header">
+                <button id="menu-toggle" class="icon-btn mobile-only" title="Меню">☰</button>
+                
+                <div class="chat-header-info">
+                    <div class="chat-header-avatar" id="chat-avatar">🤖</div>
+                    <div class="chat-header-details">
+                        <h3 id="current-chat-title">Выберите чат</h3>
+                        <span id="chat-status">Нажмите для начала</span>
+                    </div>
+                </div>
+
+                <div class="header-actions">
+                    <div class="ai-status" id="ai-status">
+                        <span id="ai-status-icon">🟢</span>
+                        <span id="ai-status-text">AI готов</span>
+                    </div>
+                    <button id="info-toggle" class="icon-btn" title="Информация">ℹ️</button>
+                </div>
+            </header>
+
+            <!-- Подсказка по вызову ИИ -->
+            <div class="ai-hint" id="ai-hint">
+                💡 Для вызова ИИ используйте: @, /ai, /gemma, или обратитесь по имени (Гемма)
+            </div>
+
+            <!-- Область сообщений -->
+            <div id="messages-container" class="messages-area">
+                <div class="welcome-screen">
+                    <div class="welcome-icon">🤖</div>
+                    <h3>Gemma 4 Assistant</h3>
+                    <p>Выберите чат чтобы начать общение</p>
+                </div>
+            </div>
+
+            <!-- Индикатор "ИИ печатает..." -->
+            <div id="typing-indicator" class="typing-indicator hidden">
+                <div class="typing-dots">
+                    <span></span><span></span><span></span>
+                </div>
+            </div>
+            <!-- Индикатор AI модерации -->
+            <div id="ai-moderation-indicator" class="ai-moderation-indicator hidden">
+                <div class="ai-moderation-spinner"></div>
+                <span>AI анализирует сообщение...</span>
+            </div>
+
+            <footer class="input-area">
+                <!-- Превью изображений -->
+                <div id="image-preview-container" class="image-preview-container hidden"></div>
+
+                <div class="input-row">
+                    <div id="chat-input-container" class="input-wrapper">
+                        <textarea id="message-input" placeholder="Сообщение..." rows="1"></textarea>
+                        <button id="send-btn" class="send-btn" title="Отправить">➤</button>
+                    </div>
+
+                    <!-- Мультикнопка для открытия бара функций -->
+                    <button id="actions-toggle-btn" class="actions-toggle-btn" title="Дополнительные функции">+</button>
+                </div>
+
+                <!-- Бар дополнительных функций -->
+                <div id="actions-bar" class="actions-bar hidden">
+                    <button class="action-btn" data-action="image" title="Изображения">🖼️</button>
+                    <button class="action-btn" data-action="audio" title="Аудио">🎙️</button>
+                    <button class="action-btn" data-action="observer" title="Анализ">👁️</button>
+                    <button class="action-btn" data-action="prompts" title="Промты">📋</button>
+                </div>
+
+                <!-- Скрытые контейнеры для разных режимов -->
+                <div id="image-input-container" class="input-wrapper hidden">
+                    <input type="file" id="image-file" multiple accept="image/*,application/pdf" style="display:none;">
+                    <label for="image-file" style="cursor:pointer; color:var(--tg-accent);">📎 Выбрать файлы</label>
+                    <div id="image-preview-container" style="display:flex; gap:5px; flex-wrap:wrap;"></div>
+                </div>
+                <div id="audio-input-container" class="input-wrapper hidden">
+                    <input type="file" id="audio-file" accept="audio/*" style="display:none;">
+                </div>
+                <div id="observer-input-container" class="input-wrapper hidden"></div>
+            </footer>
+
+        <!-- ==================== ПРАВАЯ ПАНЕЛЬ (ИНФО/НАСТРОЙКИ) ==================== -->
+        <aside class="right-panel" id="right-panel">
+            <div class="panel-header">
+                <h3>Информация</h3>
+                <button id="close-right-panel" class="icon-btn">✕</button>
+            </div>
+
+            <div class="panel-content">
+                <!-- Секция анализа диалога -->
+                <div class="panel-section">
+                    <h4>👁️ Анализ диалога</h4>
+                    <select id="observer-role" class="full-width">
+                        <option value="Критик">🔍 Критик</option>
+                        <option value="Саммаризатор">📋 Саммари</option>
+                        <option value="Психолог">🧠 Психолог</option>
+                    </select>
+                    <button id="analyze-btn" class="btn-primary full-width">Запустить анализ</button>
+                    <div id="observer-results-container" class="results-box hidden">
+                        <div id="observer-analysis-result"></div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Секция AI модерации (только для владельцев групп) -->
+                <div id="moderation-section" class="panel-section hidden">
+                    <h4>🤖 AI Модерация</h4>
+                    <select id="moderation-prompt-select" class="full-width">
+                        <option value="">Загрузка промтов...</option>
+                    </select>
+                    <textarea id="custom-moderation-prompt" placeholder="Или напишите свой промт..." rows="2"></textarea>
+                    <button id="analyze-messages-btn" class="btn-primary full-width">🔍 Анализировать чат</button>
+
+                    <div id="moderation-progress" class="progress-box hidden">
+                        <div>⏳ Анализ сообщений...</div>
+                        <div id="moderation-progress-text"></div>
+                    </div>
+
+                    <div id="moderation-results" class="moderation-results hidden">
+                        <div class="moderation-header">
+                            <strong id="moderation-results-count">Найдено: 0</strong>
+                            <div>
+                                <button id="select-all-moderation" class="btn-sm">Выбрать все</button>
+                                <button id="apply-moderation-btn" class="btn-sm btn-danger">✅ Удалить выбранные</button>
+                            </div>
+                        </div>
+                        <div id="moderation-messages-list" class="moderation-messages-list"></div>
+                        <button id="undo-moderation-btn" class="btn-sm full-width">↩️ Отменить последнее действие</button>
+                    </div>
+                </div>
+
+                <hr id="pre-moderation-hr" class="hidden">
+
+                <!-- Секция пре-модерации (только для владельцев групп) -->
+                <div id="pre-moderation-section" class="panel-section">
+                    <h4>🛡️ Пре-модерация</h4>
+                    <div class="toggle-row">
+                        <span>Проверять сообщения перед отправкой</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pre-moderation-toggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div id="pre-moderation-settings" class="pre-mod-settings">
+                        <label>Тема группы</label>
+                        <textarea id="group-topic-input" rows="2" placeholder="Опишите тему группы..."></textarea>
+                        <button id="save-topic-btn" class="btn-sm full-width">💾 Сохранить тему</button>
+
+                        <label>Стиль пре-модерации</label>
+                        <select id="pre-moderation-prompt-select" class="full-width">
+                            <option value="">-- Стандартный --</option>
+                        </select>
+                        <button id="save-pre-mod-prompt-btn" class="btn-sm full-width">💾 Сохранить стиль</button>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Секция профиля -->
+                <div class="panel-section">
+                    <h4>👤 Профиль</h4>
+                    <label>Пол</label>
+                    <select id="gender-select" class="full-width">
+                        <option value="neutral">🤖 Не указан</option>
+                        <option value="male">👨 Мужской</option>
+                        <option value="female">👩 Женский</option>
+                    </select>
+                    <button id="save-gender-btn" class="btn-primary full-width">💾 Сохранить</button>
+                    <button id="enable-notifications-btn" class="btn-sm full-width" style="margin-top:10px;">🔔 Включить уведомления</button>
+                </div>
+
+                <hr>
+
+                <!-- Секция участников группы -->
+                <div id="members-section" class="panel-section hidden">
+                    <h4>👥 Участники</h4>
+                    <div id="members-list"></div>
+                    <div class="invite-row">
+                        <input type="text" id="invite-login-input" placeholder="Логин">
+                        <button id="invite-user-btn" class="btn-sm">Пригласить</button>
+                    </div>
+                </div>
+                
+
+                <!-- Секция приглашений -->
+                <div id="invitations-section" class="panel-section">
+                    <h4>📨 Приглашения</h4>
+                    <div id="invitations-list"></div>
+                </div>
+
+                <!-- Секция администрирования (только для админа) -->
+                <div id="admin-panel" class="panel-section hidden">
+                    <h4>👑 Администрирование</h4>
+                    <div id="admin-users-list"></div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ==================== ЛЕВАЯ ПАНЕЛЬ ПРОМТОВ ==================== -->
+        <aside id="prompts-panel" class="prompts-panel hidden">
+            <div class="panel-header">
+                <h3>📋 Промты</h3>
+                <button id="close-prompts-panel" class="icon-btn">✕</button>
+            </div>
+            <div class="prompts-search">
+                <input type="text" id="prompts-search" placeholder="Поиск промтов...">
+            </div>
+            <div id="prompts-list" class="prompts-list"></div>
+        </aside>
+    </div>
+
+    <script src="/static/socket.io.min.js"></script>
+    <script>
+        if (typeof io === 'undefined') {
+            console.error('❌ Socket.IO не загрузился!');
+            alert('Ошибка загрузки. Обновите страницу (Ctrl+F5).');
+        } else {
+            console.log('✅ Socket.IO загружен');
+        }
+    </script>
+    <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>
