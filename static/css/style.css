@@ -599,6 +599,9 @@ textarea:focus {
 
 /* ==================== ПРАВАЯ ПАНЕЛЬ ==================== */
 .right-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
     width: 0;
     overflow: hidden;
     background: var(--tg-sidebar);
@@ -607,7 +610,7 @@ textarea:focus {
     flex-direction: column;
     transition: width 0.3s ease;
     height: 100%;
-    flex-shrink: 0;
+    z-index: 200;
 }
 
 .right-panel.open {
@@ -1103,11 +1106,11 @@ textarea:focus {
     }
     
     .messages-area {
-        flex: 1 1 auto !important;  /* было 0% */
+        flex: 1 1 auto !important;
         min-height: 0 !important;
-        height: 0;                   /* хак для flex-контейнера */
+        height: 0;
         overflow-y: auto;
-        padding-bottom: 16px !important; /* сброс мобильного отступа */
+        padding-bottom: 16px !important;
     }
     .message {
         flex-shrink: 0;
@@ -1127,6 +1130,16 @@ textarea:focus {
         display: flex;
         align-items: center;
         gap: 10px;
+    }
+    
+    /* Правая панель не влияет на layout чата */
+    .right-panel {
+        position: absolute !important;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        height: 100% !important;
+        z-index: 200;
     }
 }
 .right-panel, #prompts-panel {
